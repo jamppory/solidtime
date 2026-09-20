@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
-<title>입체시간 v0.9 · C.3.2 주간달력 데이터호환 수정</title>
+<title>입체시간 v0.9 · C.3.3 주간달력 독립복구</title>
 <style>
 :root{--bg:#f6f5f2;--card:#fff;--ink:#222;--muted:#777;--line:#e6e2dc;--accent:#5f6f65;--r:16px}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;overflow-x:hidden}
@@ -29,7 +29,7 @@ button,input,textarea,select{font:inherit} button{cursor:pointer}.app{max-width:
 </head>
 <body>
 <div class="app">
-<div class="top"><div><div class="title">입체시간</div><div class="ver">v0.9 · C.3.2 주간달력 데이터호환 수정 · schema 0.9.0</div></div><div class="row"><button class="btn small" id="modeBtn" onclick="toggleMode()">🔥 스프린트</button><button class="btn small" id="soundBtn" onclick="toggleSound()">소리 켬</button><button class="btn small timerBtn" id="alarmTestBtn" onclick="testAlarm()">알림 시험</button><div class="status" id="saveStatus">로컬 저장 준비 중</div></div></div>
+<div class="top"><div><div class="title">입체시간</div><div class="ver">v0.9 · C.3.3 주간달력 독립복구 · schema 0.9.0</div></div><div class="row"><button class="btn small" id="modeBtn" onclick="toggleMode()">🔥 스프린트</button><button class="btn small" id="soundBtn" onclick="toggleSound()">소리 켬</button><button class="btn small timerBtn" id="alarmTestBtn" onclick="testAlarm()">알림 시험</button><div class="status" id="saveStatus">로컬 저장 준비 중</div></div></div>
 <nav aria-label="상단 화면 전환" class="topTabs"><button class="tab active" data-tab="today" onclick="switchTab('today')">오늘</button><button class="tab" data-tab="projects" onclick="switchTab('projects')">프로젝트</button><button class="tab" data-tab="activities" onclick="switchTab('activities')">루틴</button><button class="tab" data-tab="records" onclick="switchTab('records')">기록</button><button class="tab" data-tab="settings" onclick="switchTab('settings')">설정</button></nav>
 <div class="review uiHealth" id="uiHealthBanner"></div>
 <section class="tabpage active" id="today">
@@ -129,6 +129,9 @@ async function init(){
   await dbSet('state',structuredClone(state));
   document.getElementById('saveStatus').textContent=recoveredInbox?`투입함 ${recoveredInbox}건 복구됨`:'이 기기에 저장됨';
   render();updateRollbackButton();await loadCloudSetup();renderSyncStatus();uiHealthCheck();
+  // 주간 달력은 초기화 마지막에도 독립적으로 한 번 더 보장한다.
+  try{renderWeekCalendar()}catch(e){console.error(e)}
+  setTimeout(()=>{try{renderWeekCalendar()}catch(e){console.error(e)}},50);
   await restoreTimerState();
   restoreFinishedNotice();
 }
@@ -142,7 +145,27 @@ function reconcileInboxJournal(){state.inbox=mergeInboxCollections(state.inbox,r
 function renderInboxSafetyStatus(){const j=readInboxJournal(),count=document.getElementById('inboxSafetyCount'),status=document.getElementById('inboxSafetyStatus');if(count)count.textContent=j.length+'건';if(status)status.textContent=j.length?'이 기기에 투입함 원본 '+j.length+'건을 별도로 보관 중입니다. 동기화로 빠진 항목은 다시 합쳐집니다.':'아직 별도 보관된 투입함 기록이 없습니다.'}
 async function recoverInboxFromJournal(){const before=(state.inbox||[]).length;reconcileInboxJournal();const added=(state.inbox||[]).length-before;await dbSet('state',structuredClone(state));render();alert(added?`누락된 투입함 ${added}건을 복구했습니다.`:'현재 누락된 투입함 항목을 찾지 못했습니다.')}
 function downloadInboxJournal(){downloadJSON({format:'solid-time-inbox-safety',exportedAt:new Date().toISOString(),items:readInboxJournal()},'입체시간_투입함_안전보관_'+today()+'.json')}
-function render(){document.getElementById('todayLabel').textContent='오늘 · '+today();document.getElementById('nextAction').innerHTML=state.settings.nextAction?'<b>'+esc(state.settings.nextAction)+'</b>':'등록된 다음 행동이 없습니다.';renderSettings();renderInbox();renderProjects();renderActivities();renderLife();renderIdeas();renderVoyages();renderRecords();renderTimeChart();renderManualTime();renderDayReview();renderWeekCalendar();renderInboxSafetyStatus();renderSyncStatus();uiHealthCheck()}
+function safeRenderPart(name,fn){try{fn()}catch(e){console.error('render '+name,e);const s=document.getElementById('saveStatus');if(s&&!String(s.textContent||'').startsWith('오류'))s.textContent='일부 화면 오류: '+name}}
+function render(){
+  const label=document.getElementById('todayLabel');if(label)label.textContent='오늘 · '+today();
+  const next=document.getElementById('nextAction');if(next)next.innerHTML=state.settings?.nextAction?'<b>'+esc(state.settings.nextAction)+'</b>':'등록된 다음 행동이 없습니다.';
+  // 주간 달력은 다른 화면 렌더 오류와 무관하게 가장 먼저 그린다.
+  safeRenderPart('주간 달력',renderWeekCalendar);
+  safeRenderPart('상단 설정',renderSettings);
+  safeRenderPart('투입함',renderInbox);
+  safeRenderPart('프로젝트',renderProjects);
+  safeRenderPart('루틴',renderActivities);
+  safeRenderPart('생활',renderLife);
+  safeRenderPart('생각 씨앗',renderIdeas);
+  safeRenderPart('항해',renderVoyages);
+  safeRenderPart('기록',renderRecords);
+  safeRenderPart('도넛',renderTimeChart);
+  safeRenderPart('직접 시간 입력',renderManualTime);
+  safeRenderPart('하루 시간표',renderDayReview);
+  safeRenderPart('투입함 안전보관',renderInboxSafetyStatus);
+  safeRenderPart('동기화 상태',renderSyncStatus);
+  safeRenderPart('화면 점검',uiHealthCheck);
+}
 async function setNextAction(){const el=document.getElementById('nextActionInput');state.settings.nextAction=el.value.trim();el.value='';await save();render()}
 async function addInbox(){const el=document.getElementById('inboxInput'),text=el.value.trim();if(!text)return;const item={id:uid(),date:today(),text,done:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};journalInboxItem(item);state.inbox.unshift(item);try{await save('inbox_add');el.value='';renderInbox()}catch(e){console.error(e);alert('투입함 저장 중 오류가 났습니다. 입력 내용은 안전보관에 남겨두었습니다.');renderInboxSafetyStatus()}}
 function renderInbox(){const a=state.inbox.filter(x=>x.date===today()&&!x.done&&!x.routedAt);document.getElementById('inboxList').innerHTML=a.length?a.map(x=>`<div class="item"><input type="checkbox" onchange="toggleInbox('${x.id}')"><div class="grow">${esc(x.text)}</div><button class="btn small" onclick="routeInbox('${x.id}')">보내기 →</button></div>`).join(''):'<div class="empty">오늘 투입함이 비어 있습니다.</div>'}
@@ -156,8 +179,8 @@ function tone(freq,at,dur=.34,vol=.32){const c=ensureAudioReady();if(!c)return;t
 function primeAudio(){const c=ensureAudioReady();if(!c)return;try{const o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);g.gain.value=.00001;o.frequency.value=440;o.start();o.stop(c.currentTime+.04)}catch(e){}}
 function playSoundTest(){const c=ensureAudioReady();if(!c)return;const t=c.currentTime+.04;tone(660,t,.38,.34);tone(880,t+.45,.38,.36);tone(1047,t+.90,.5,.38)}
 function playAlarmBurst(){if(!alarmActive||state.settings.soundEnabled===false)return;const c=ensureAudioReady();if(!c)return;const t=c.currentTime+.04;tone(660,t,.42,.38);tone(880,t+.48,.42,.40);tone(1047,t+.96,.55,.42);tone(880,t+1.58,.42,.38)}
-function startTitleAlarm(){stopTitleAlarm();const base='입체시간 v0.9 · C.3.2 주간달력 데이터호환 수정';let flip=false;titleAlarmInterval=setInterval(()=>{flip=!flip;document.title=flip?'⏰ 타이머 완료 · 입체시간':base},800)}
-function stopTitleAlarm(){if(titleAlarmInterval){clearInterval(titleAlarmInterval);titleAlarmInterval=null}document.title='입체시간 v0.9 · C.3.2 주간달력 데이터호환 수정'}
+function startTitleAlarm(){stopTitleAlarm();const base='입체시간 v0.9 · C.3.3 주간달력 독립복구';let flip=false;titleAlarmInterval=setInterval(()=>{flip=!flip;document.title=flip?'⏰ 타이머 완료 · 입체시간':base},800)}
+function stopTitleAlarm(){if(titleAlarmInterval){clearInterval(titleAlarmInterval);titleAlarmInterval=null}document.title='입체시간 v0.9 · C.3.3 주간달력 독립복구'}
 function startAlarmLoop(){stopAlarmLoop();alarmActive=true;playAlarmBurst();startTitleAlarm();try{navigator.vibrate?.([500,220,500,220,700])}catch(e){}alarmInterval=setInterval(()=>{playAlarmBurst();try{navigator.vibrate?.([400,180,400])}catch(e){}},2600)}
 function stopAlarmLoop(){alarmActive=false;if(alarmInterval){clearInterval(alarmInterval);alarmInterval=null}stopTitleAlarm();try{navigator.vibrate?.(0)}catch(e){}}
 async function prepareAlertPermission(){primeAudio();try{if('Notification' in window&&Notification.permission==='default')await Notification.requestPermission()}catch(e){}}
@@ -303,26 +326,44 @@ function weekProjectData(d){
 function weekdayKo(date){const n=new Date(date+'T12:00:00').getDay();return ['일','월','화','수','목','금','토'][n]}
 function toggleDayCard(d){ui.openDays[d]=!ui.openDays[d];renderWeekCalendar()}
 function renderWeekCalendar(){
+  const targets=['todayWeekCalendar','weekCalendar'];
   try{
     if(!Array.isArray(state.allocations))normalizeAllocationState();
-    const allocations=Array.isArray(state.allocations)?state.allocations:[], logs=Array.isArray(state.timeLogs)?state.timeLogs:[], worksAll=Array.isArray(state.projectWorkItems)?state.projectWorkItems:[], projects=Array.isArray(state.projects)?state.projects.filter(p=>p&&p.status==='active'):[], ds=weekDates();
-    for(const id of ['todayWeekCalendar','weekCalendar']){
+    const allocations=Array.isArray(state.allocations)?state.allocations:[];
+    const logs=Array.isArray(state.timeLogs)?state.timeLogs:[];
+    const worksAll=Array.isArray(state.projectWorkItems)?state.projectWorkItems:[];
+    const projects=(Array.isArray(state.projects)?state.projects:[]).filter(p=>p&&(!p.status||p.status==='active'));
+    let ds=[];
+    try{ds=weekDates()}catch(e){console.warn('weekDates fallback',e)}
+    if(!Array.isArray(ds)||ds.length!==7){
+      const base=new Date();
+      base.setHours(12,0,0,0);
+      const offset=(base.getDay()+6)%7;
+      base.setDate(base.getDate()-offset);
+      ds=Array.from({length:7},(_,i)=>{const x=new Date(base);x.setDate(base.getDate()+i);return localDateFrom(x)});
+    }
+    const cards=ds.map(d=>{
+      const plans=allocations.filter(x=>x&&x.date===d).reduce((sum,x)=>sum+Number(x.plannedMinutes||0),0);
+      const actual=logs.filter(x=>x&&x.localDate===d&&x.kind==='project').reduce((sum,x)=>sum+Number(x.minutes||0),0);
+      const dayWorks=worksAll.filter(x=>x&&x.planDate===d);
+      const body=projects.map(p=>{
+        const plan=allocations.filter(x=>x&&x.date===d&&x.projectId===p.id).reduce((sum,x)=>sum+Number(x.plannedMinutes||0),0);
+        const act=logs.filter(x=>x&&x.localDate===d&&x.kind==='project'&&(x.targetId===p.id||x.projectId===p.id)).reduce((sum,x)=>sum+Number(x.minutes||0),0);
+        const ws=dayWorks.filter(w=>w.projectId===p.id);
+        if(!plan&&!act&&!ws.length)return '';
+        return `<div class="item"><span class="colorDot" style="background:${esc(p.color||'#ddd')}"></span><div class="grow"><b>${esc(p.name||'프로젝트')}</b><div class="small muted">계획 ${plan}분 · 실제 ${act}분</div>${ws.map(w=>`<div class="small">${w.done?'✓':'○'} ${esc(w.text||'')}</div>`).join('')}</div></div>`;
+      }).join('')||'<div class="empty">이 날짜에 잡힌 프로젝트가 없습니다.</div>';
+      // JS 클릭 함수가 아니라 브라우저 기본 details/summary를 사용한다.
+      return `<details class="calcard" ${d===today()?'open':''}><summary class="calhead"><div><b>${d===today()?'오늘 · ':''}${weekdayKo(d)} · ${esc(d.slice(5))}</b><div class="small muted">${esc(d)}</div></div><div class="small">계획 ${plans}분 · 실제 ${actual}분 · 할 일 ${dayWorks.length}</div></summary><div class="calbody">${body}</div></details>`;
+    }).join('');
+    for(const id of targets){
       const el=document.getElementById(id);if(!el)continue;
-      el.innerHTML=`<div class="calendarCards">${ds.map(d=>{
-        const z=weekProjectData(d),open=!!ui.openDays[d];
-        const body=projects.map(p=>{
-          const plan=allocations.filter(x=>x&&x.date===d&&x.projectId===p.id).reduce((sum,x)=>sum+Number(x.plannedMinutes||0),0);
-          const act=logs.filter(x=>x&&x.localDate===d&&x.kind==='project'&&x.targetId===p.id).reduce((sum,x)=>sum+Number(x.minutes||0),0);
-          const ws=worksAll.filter(w=>w&&w.planDate===d&&w.projectId===p.id);
-          if(!plan&&!act&&!ws.length)return '';
-          return `<div class="item"><span class="colorDot" style="background:${esc(p.color||'#ddd')}"></span><div class="grow"><b>${esc(p.name)}</b><div class="small muted">계획 ${plan}분 · 실제 ${act}분</div>${ws.map(w=>`<div class="small">${w.done?'✓':'○'} ${esc(w.text)}</div>`).join('')}</div></div>`;
-        }).join('')||'<div class="empty">이 날짜에 잡힌 프로젝트가 없습니다.</div>';
-        return `<div class="calcard"><button type="button" class="calhead" style="width:100%;border:0;background:#fff;text-align:left" onclick="toggleDayCard('${d}')"><div><b>${d===today()?'오늘 · ':''}${weekdayKo(d)} · ${esc(d.slice(5))}</b><div class="small muted">${esc(d)}</div></div><div class="small">계획 ${z.plans}분 · 실제 ${z.actual}분 · 할 일 ${z.works.length} · ${open?'접기':'펼치기'}</div></button>${open?`<div class="calbody">${body}</div>`:''}</div>`;
-      }).join('')}</div>`;
+      el.innerHTML=`<div class="calendarCards">${cards}</div>`;
+      el.dataset.weekRendered='yes';
     }
   }catch(e){
     console.error('week calendar render',e);
-    for(const id of ['todayWeekCalendar','weekCalendar']){const el=document.getElementById(id);if(el)el.innerHTML=`<div class="review"><b>주간 달력 표시 오류</b><div class="small">${esc(e?.message||e)}</div></div>`}
+    for(const id of targets){const el=document.getElementById(id);if(el)el.innerHTML=`<div class="review"><b>주간 달력 표시 오류</b><div class="small">${esc(e?.message||e)}</div></div>`}
   }
 }
 function loadDailyNote(){const d=document.getElementById('dailyNoteDate').value,n=state.dailyNotes.find(x=>x.date===d);document.getElementById('dailyNoteText').value=n?.text||''}
@@ -480,7 +521,7 @@ async function confirmLegacyImport(){if(!pendingImport)return;const already=(sta
 function updateRollbackButton(){const btn=document.getElementById('rollbackBtn');if(!btn)return;const last=(state.importBatches||[]).find(x=>x.status==='success'&&x.backupId);lastImportBackupId=last?.backupId||lastImportBackupId;btn.style.display=lastImportBackupId?'inline-block':'none'}
 async function rollbackLastImport(){if(!lastImportBackupId)return;const b=(state.backups||[]).find(x=>x.id===lastImportBackupId);if(!b)return alert('가져오기 직전 백업을 찾지 못했습니다.');if(!confirm('가져오기 직전 상태로 되돌릴까요? 현재 상태도 먼저 백업합니다.'))return;const current=clone(state);const beforeRollback={id:uid(),schemaVersion:SCHEMA,createdAt:new Date().toISOString(),reason:'before_rollback',snapshot:current,counts:recordCounts(current),totalTimeMinutes:sumMinutes(current.timeLogs)};const restored=clone(b.snapshot);restored.backups=[beforeRollback,...(current.backups||[])];restored.importBatches=(current.importBatches||[]).map(x=>x.backupId===lastImportBackupId?{...x,status:'rolled_back',rolledBackAt:new Date().toISOString()}:x);Object.keys(state).forEach(k=>delete state[k]);Object.assign(state,restored);lastImportBackupId=null;await save();document.getElementById('importResult').textContent='가져오기 직전 상태로 되돌렸습니다.';updateRollbackButton();render()}
 function uiHealthCheck(){const ids=['todayWeekCalendar','weekCalendar','timeDonut','dayTimeline','settings'];const missing=ids.filter(id=>!document.getElementById(id));const b=document.getElementById('uiHealthBanner');if(!b)return;if(missing.length){b.classList.add('show');b.innerHTML='<b>화면 구성 오류 감지</b><div class="small">누락: '+missing.join(', ')+' · 이 버전 사용을 중지하고 알려주세요.</div>'}else{b.classList.remove('show');b.innerHTML=''}}
-function switchTab(tabId){document.querySelectorAll('.tabpage').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===tabId));const page=document.getElementById(tabId);if(page){page.classList.add('active');if(tabId==='records'){renderManualTime();renderTimeChart();renderDayReview()}if(tabId==='settings'){renderInboxSafetyStatus();renderSyncStatus();void loadCloudSetup()}window.scrollTo({top:0,behavior:'auto'})}}
+function switchTab(tabId){document.querySelectorAll('.tabpage').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===tabId));const page=document.getElementById(tabId);if(page){page.classList.add('active');if(tabId==='today'||tabId==='projects'){try{renderWeekCalendar()}catch(e){console.error(e)}}if(tabId==='records'){renderManualTime();renderTimeChart();renderDayReview()}if(tabId==='settings'){renderInboxSafetyStatus();renderSyncStatus();void loadCloudSetup()}window.scrollTo({top:0,behavior:'auto'})}}
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 window.addEventListener('error',e=>{document.getElementById('saveStatus').textContent='오류: '+e.message});
 window.addEventListener('beforeunload',()=>{persistTimerState()});
