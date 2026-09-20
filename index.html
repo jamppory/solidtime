@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
-<title>입체시간 v0.9 · C.3.1 주간달력 수정</title>
+<title>입체시간 v0.9 · C.3.2 주간달력 데이터호환 수정</title>
 <style>
 :root{--bg:#f6f5f2;--card:#fff;--ink:#222;--muted:#777;--line:#e6e2dc;--accent:#5f6f65;--r:16px}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;overflow-x:hidden}
@@ -29,7 +29,7 @@ button,input,textarea,select{font:inherit} button{cursor:pointer}.app{max-width:
 </head>
 <body>
 <div class="app">
-<div class="top"><div><div class="title">입체시간</div><div class="ver">v0.9 · C.3.1 주간달력 수정 · schema 0.9.0</div></div><div class="row"><button class="btn small" id="modeBtn" onclick="toggleMode()">🔥 스프린트</button><button class="btn small" id="soundBtn" onclick="toggleSound()">소리 켬</button><button class="btn small timerBtn" id="alarmTestBtn" onclick="testAlarm()">알림 시험</button><div class="status" id="saveStatus">로컬 저장 준비 중</div></div></div>
+<div class="top"><div><div class="title">입체시간</div><div class="ver">v0.9 · C.3.2 주간달력 데이터호환 수정 · schema 0.9.0</div></div><div class="row"><button class="btn small" id="modeBtn" onclick="toggleMode()">🔥 스프린트</button><button class="btn small" id="soundBtn" onclick="toggleSound()">소리 켬</button><button class="btn small timerBtn" id="alarmTestBtn" onclick="testAlarm()">알림 시험</button><div class="status" id="saveStatus">로컬 저장 준비 중</div></div></div>
 <nav aria-label="상단 화면 전환" class="topTabs"><button class="tab active" data-tab="today" onclick="switchTab('today')">오늘</button><button class="tab" data-tab="projects" onclick="switchTab('projects')">프로젝트</button><button class="tab" data-tab="activities" onclick="switchTab('activities')">루틴</button><button class="tab" data-tab="records" onclick="switchTab('records')">기록</button><button class="tab" data-tab="settings" onclick="switchTab('settings')">설정</button></nav>
 <div class="review uiHealth" id="uiHealthBanner"></div>
 <section class="tabpage active" id="today">
@@ -92,10 +92,38 @@ async function dbSet(k,v){const d=await openDB();return new Promise((res,rej)=>{
 function ensureSyncState(){state.settings=state.settings||{};state.settings.deviceId=state.settings.deviceId||uid();state.settings.sync=state.settings.sync||{provider:null,status:'local_only',lastSyncAt:null,lastRemoteRevision:null};state.syncQueue=state.syncQueue||[];state.syncConflicts=state.syncConflicts||[]}
 function queueLocalSnapshot(reason='local_change'){ensureSyncState();const now=new Date().toISOString(),last=state.syncQueue[state.syncQueue.length-1];if(last&&last.status==='pending'){last.updatedAt=now;last.reason=reason}else state.syncQueue.push({id:uid(),type:'snapshot',status:'pending',createdAt:now,updatedAt:now,reason,deviceId:state.settings.deviceId});if(state.syncQueue.length>30)state.syncQueue=state.syncQueue.slice(-30)}
 async function save(reason='local_change'){ensureSyncState();state.settings.schemaVersion=SCHEMA;state.settings.lastLocalSavedAt=new Date().toISOString();if(state.settings.sync.status!=='local_only')queueLocalSnapshot(reason);await dbSet('state',structuredClone(state));const el=document.getElementById('saveStatus');if(el)el.textContent='이 기기에 저장됨';renderSyncStatus()}
+function normalizeAllocationState(){
+  if(Array.isArray(state.allocations))return false;
+  const legacy=state.allocations, next=[];
+  if(legacy&&typeof legacy==='object'){
+    const projects=Array.isArray(state.projects)?state.projects:[];
+    for(const [key,value] of Object.entries(legacy)){
+      const m=String(key).match(/^(\d{4}-\d{2}-\d{2})\|(.+)$/), mins=Number(value);
+      if(!m||!Number.isFinite(mins))continue;
+      let pid=m[2], linkStatus='legacy_unverified';
+      if(/^\d+$/.test(pid)){
+        const mapped=projects[Number(pid)]?.id||null;
+        if(mapped){pid=mapped;linkStatus='linked'}else pid=null;
+      }else if(projects.some(p=>p.id===pid))linkStatus='linked';
+      next.push({id:uid(),date:m[1],projectId:pid,plannedMinutes:mins,linkStatus,legacyKey:key});
+    }
+  }
+  state.allocations=next;
+  return true;
+}
+function ensureCurrentStateShape(){
+  let changed=false;
+  if(normalizeAllocationState())changed=true;
+  const mustBeArrays=['projects','projectArchive','projectTasks','projectWorkItems','activities','activityArchive','activityDays','activityNotes','activityTodos','inbox','lifeTasks','legacyLifeFlags','timeLogs','rollovers','dailyNotes','ideas','ideaNodes','voyages','dayRhythms','focusChecks','importBatches','backups','syncQueue','syncConflicts'];
+  for(const k of mustBeArrays){if(!Array.isArray(state[k])){state[k]=[];changed=true}}
+  return changed;
+}
 async function init(){
   await openDB();
   const old=await dbGet('state');
   if(old&&old.settings?.schemaVersion===SCHEMA){for(const k of Object.keys(state)){if(old[k]!==undefined)state[k]=old[k]}}
+  const shapeChanged=ensureCurrentStateShape();
+  if(shapeChanged&&old)await dbSet('state_pre_c32_shape_fix',structuredClone(old));
   ensureSyncState();
   const beforeInbox=(state.inbox||[]).length;reconcileInboxJournal();const recoveredInbox=(state.inbox||[]).length-beforeInbox;
   await dbSet('state',structuredClone(state));
@@ -128,8 +156,8 @@ function tone(freq,at,dur=.34,vol=.32){const c=ensureAudioReady();if(!c)return;t
 function primeAudio(){const c=ensureAudioReady();if(!c)return;try{const o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);g.gain.value=.00001;o.frequency.value=440;o.start();o.stop(c.currentTime+.04)}catch(e){}}
 function playSoundTest(){const c=ensureAudioReady();if(!c)return;const t=c.currentTime+.04;tone(660,t,.38,.34);tone(880,t+.45,.38,.36);tone(1047,t+.90,.5,.38)}
 function playAlarmBurst(){if(!alarmActive||state.settings.soundEnabled===false)return;const c=ensureAudioReady();if(!c)return;const t=c.currentTime+.04;tone(660,t,.42,.38);tone(880,t+.48,.42,.40);tone(1047,t+.96,.55,.42);tone(880,t+1.58,.42,.38)}
-function startTitleAlarm(){stopTitleAlarm();const base='입체시간 v0.9 · C.3.1 주간달력 수정';let flip=false;titleAlarmInterval=setInterval(()=>{flip=!flip;document.title=flip?'⏰ 타이머 완료 · 입체시간':base},800)}
-function stopTitleAlarm(){if(titleAlarmInterval){clearInterval(titleAlarmInterval);titleAlarmInterval=null}document.title='입체시간 v0.9 · C.3.1 주간달력 수정'}
+function startTitleAlarm(){stopTitleAlarm();const base='입체시간 v0.9 · C.3.2 주간달력 데이터호환 수정';let flip=false;titleAlarmInterval=setInterval(()=>{flip=!flip;document.title=flip?'⏰ 타이머 완료 · 입체시간':base},800)}
+function stopTitleAlarm(){if(titleAlarmInterval){clearInterval(titleAlarmInterval);titleAlarmInterval=null}document.title='입체시간 v0.9 · C.3.2 주간달력 데이터호환 수정'}
 function startAlarmLoop(){stopAlarmLoop();alarmActive=true;playAlarmBurst();startTitleAlarm();try{navigator.vibrate?.([500,220,500,220,700])}catch(e){}alarmInterval=setInterval(()=>{playAlarmBurst();try{navigator.vibrate?.([400,180,400])}catch(e){}},2600)}
 function stopAlarmLoop(){alarmActive=false;if(alarmInterval){clearInterval(alarmInterval);alarmInterval=null}stopTitleAlarm();try{navigator.vibrate?.(0)}catch(e){}}
 async function prepareAlertPermission(){primeAudio();try{if('Notification' in window&&Notification.permission==='default')await Notification.requestPermission()}catch(e){}}
@@ -265,28 +293,36 @@ function renderDayReview(){
 }
 async function saveDayRhythm(){const d=document.getElementById('reviewDate')?.value||today();let r=state.dayRhythms.find(x=>x.date===d);if(!r){r={id:uid(),date:d,wakeTime:null,restTime:null};state.dayRhythms.push(r)}r.wakeTime=document.getElementById('wakeTime').value||null;r.restTime=document.getElementById('restTime').value||null;await save();renderDayReview()}
 async function addReviewLife(){const d=document.getElementById('reviewDate')?.value||today(),category=document.getElementById('reviewLifeCategory').value,el=document.getElementById('reviewLifeText'),text=el.value.trim();if(!text)return;state.lifeTasks.unshift({id:uid(),date:d,category,text,done:false});el.value='';await save();renderLife();renderDayReview()}
-function weekProjectData(d){const plans=state.allocations.filter(x=>x.date===d&&x.projectId).reduce((s,x)=>s+Number(x.plannedMinutes||0),0),actual=state.timeLogs.filter(x=>x.localDate===d&&x.kind==='project').reduce((s,x)=>s+Number(x.minutes||0),0),works=state.projectWorkItems.filter(x=>x.planDate===d);return {plans,actual,works}}
+function weekProjectData(d){
+  const allocations=Array.isArray(state.allocations)?state.allocations:[], logs=Array.isArray(state.timeLogs)?state.timeLogs:[], worksAll=Array.isArray(state.projectWorkItems)?state.projectWorkItems:[];
+  const plans=allocations.filter(x=>x&&x.date===d&&x.projectId).reduce((sum,x)=>sum+Number(x.plannedMinutes||0),0);
+  const actual=logs.filter(x=>x&&x.localDate===d&&x.kind==='project').reduce((sum,x)=>sum+Number(x.minutes||0),0);
+  const works=worksAll.filter(x=>x&&x.planDate===d);
+  return {plans,actual,works};
+}
 function weekdayKo(date){const n=new Date(date+'T12:00:00').getDay();return ['일','월','화','수','목','금','토'][n]}
 function toggleDayCard(d){ui.openDays[d]=!ui.openDays[d];renderWeekCalendar()}
 function renderWeekCalendar(){
-  const ds=weekDates();
-  for(const id of ['todayWeekCalendar','weekCalendar']){
-    const el=document.getElementById(id);
-    if(!el)continue;
-    el.innerHTML=`<div class="calendarCards">${ds.map(d=>{
-      const z=weekProjectData(d),open=!!ui.openDays[d];
-      const body=state.projects.filter(p=>p.status==='active').map(p=>{
-        const plan=state.allocations.filter(x=>x.date===d&&x.projectId===p.id).reduce((s,x)=>s+Number(x.plannedMinutes||0),0);
-        const act=state.timeLogs.filter(x=>x.localDate===d&&x.kind==='project'&&x.targetId===p.id).reduce((s,x)=>s+Number(x.minutes||0),0);
-        const ws=z.works.filter(w=>w.projectId===p.id);
-        if(!plan&&!act&&!ws.length)return '';
-        return `<div class="item"><span class="colorDot" style="background:${esc(p.color||'#ddd')}"></span><div class="grow"><b>${esc(p.name)}</b><div class="small muted">계획 ${plan}분 · 실제 ${act}분</div>${ws.map(w=>`<div class="small">${w.done?'✓':'○'} ${esc(w.text)}</div>`).join('')}</div></div>`;
-      }).join('')||'<div class="empty">이 날짜에 잡힌 프로젝트가 없습니다.</div>';
-      return `<details class="calcard" data-week-day="${d}" ${open?'open':''}><summary class="calhead"><div><b>${d===today()?'오늘 · ':''}${weekdayKo(d)} · ${esc(d.slice(5))}</b><div class="small muted">${esc(d)}</div></div><div class="small">계획 ${z.plans}분 · 실제 ${z.actual}분 · 할 일 ${z.works.length}</div></summary><div class="calbody">${body}</div></details>`;
-    }).join('')}</div>`;
-    el.querySelectorAll('details[data-week-day]').forEach(det=>{
-      det.addEventListener('toggle',()=>{ui.openDays[det.dataset.weekDay]=det.open});
-    });
+  try{
+    if(!Array.isArray(state.allocations))normalizeAllocationState();
+    const allocations=Array.isArray(state.allocations)?state.allocations:[], logs=Array.isArray(state.timeLogs)?state.timeLogs:[], worksAll=Array.isArray(state.projectWorkItems)?state.projectWorkItems:[], projects=Array.isArray(state.projects)?state.projects.filter(p=>p&&p.status==='active'):[], ds=weekDates();
+    for(const id of ['todayWeekCalendar','weekCalendar']){
+      const el=document.getElementById(id);if(!el)continue;
+      el.innerHTML=`<div class="calendarCards">${ds.map(d=>{
+        const z=weekProjectData(d),open=!!ui.openDays[d];
+        const body=projects.map(p=>{
+          const plan=allocations.filter(x=>x&&x.date===d&&x.projectId===p.id).reduce((sum,x)=>sum+Number(x.plannedMinutes||0),0);
+          const act=logs.filter(x=>x&&x.localDate===d&&x.kind==='project'&&x.targetId===p.id).reduce((sum,x)=>sum+Number(x.minutes||0),0);
+          const ws=worksAll.filter(w=>w&&w.planDate===d&&w.projectId===p.id);
+          if(!plan&&!act&&!ws.length)return '';
+          return `<div class="item"><span class="colorDot" style="background:${esc(p.color||'#ddd')}"></span><div class="grow"><b>${esc(p.name)}</b><div class="small muted">계획 ${plan}분 · 실제 ${act}분</div>${ws.map(w=>`<div class="small">${w.done?'✓':'○'} ${esc(w.text)}</div>`).join('')}</div></div>`;
+        }).join('')||'<div class="empty">이 날짜에 잡힌 프로젝트가 없습니다.</div>';
+        return `<div class="calcard"><button type="button" class="calhead" style="width:100%;border:0;background:#fff;text-align:left" onclick="toggleDayCard('${d}')"><div><b>${d===today()?'오늘 · ':''}${weekdayKo(d)} · ${esc(d.slice(5))}</b><div class="small muted">${esc(d)}</div></div><div class="small">계획 ${z.plans}분 · 실제 ${z.actual}분 · 할 일 ${z.works.length} · ${open?'접기':'펼치기'}</div></button>${open?`<div class="calbody">${body}</div>`:''}</div>`;
+      }).join('')}</div>`;
+    }
+  }catch(e){
+    console.error('week calendar render',e);
+    for(const id of ['todayWeekCalendar','weekCalendar']){const el=document.getElementById(id);if(el)el.innerHTML=`<div class="review"><b>주간 달력 표시 오류</b><div class="small">${esc(e?.message||e)}</div></div>`}
   }
 }
 function loadDailyNote(){const d=document.getElementById('dailyNoteDate').value,n=state.dailyNotes.find(x=>x.date===d);document.getElementById('dailyNoteText').value=n?.text||''}
@@ -350,6 +386,7 @@ async function syncNow(){
       const incoming=payload.data;
       const localDeviceId=state.settings.deviceId, localConflicts=structuredClone(state.syncConflicts||[]), localInbox=structuredClone(state.inbox||[]);
       for(const k of Object.keys(state)){if(incoming[k]!==undefined)state[k]=structuredClone(incoming[k])}
+      ensureCurrentStateShape();
       state.inbox=mergeInboxCollections(state.inbox,localInbox,readInboxJournal());
       ensureSyncState(); state.settings.deviceId=localDeviceId||state.settings.deviceId||uid(); state.syncConflicts=localConflicts; clearPendingSyncQueue(); state.settings.sync={...state.settings.sync,provider:'supabase',status:'connected',lastSyncAt:new Date().toISOString(),lastRemoteRevision:remoteRev};
       await dbSet('state',structuredClone(state)); render(); renderSyncStatus(); if(notice)notice.textContent='동기화 완료 · 다른 기기의 최신 기록을 이 기기에 반영했습니다.'; alert('클라우드의 최신 기록을 가져왔습니다.'); return;
@@ -386,6 +423,7 @@ async function resolveSyncConflict(choice){
       const localConflicts=structuredClone(state.syncConflicts||[]), localInbox=structuredClone(state.inbox||[]);
       const incoming=payload.data;
       for(const k of Object.keys(state)){if(incoming[k]!==undefined)state[k]=structuredClone(incoming[k])}
+      ensureCurrentStateShape();
       state.inbox=mergeInboxCollections(state.inbox,localInbox,readInboxJournal());
       ensureSyncState();
       state.settings.deviceId=localDeviceId||state.settings.deviceId||uid();
