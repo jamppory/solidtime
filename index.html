@@ -66,7 +66,7 @@ button,input,textarea,select{font:inherit} button{cursor:pointer}.app{max-width:
 </head>
 <body>
 <div class="app">
-<div class="top"><div><div class="title">입체시간</div><div class="ver">v0.9 · C.3.6 PC 떠있는 타이머 · schema 0.9.0</div></div><div class="row"><button class="btn small" id="modeBtn" onclick="toggleMode()">🔥 스프린트</button><button class="btn small" id="soundBtn" onclick="toggleSound()">소리 켬</button><button class="btn small timerBtn" id="alarmTestBtn" onclick="testAlarm()">알림 시험</button><div class="status" id="saveStatus">로컬 저장 준비 중</div></div></div>
+<div class="top"><div><div class="title">입체시간</div><div class="ver">v0.9 · C.3.7 PC 떠있는 타이머 수정 · schema 0.9.0</div></div><div class="row"><button class="btn small" id="modeBtn" onclick="toggleMode()">🔥 스프린트</button><button class="btn small" id="soundBtn" onclick="toggleSound()">소리 켬</button><button class="btn small timerBtn" id="alarmTestBtn" onclick="testAlarm()">알림 시험</button><div class="status" id="saveStatus">로컬 저장 준비 중</div></div></div>
 <nav aria-label="상단 화면 전환" class="topTabs"><button class="tab active" data-tab="today" onclick="switchTab('today')">오늘</button><button class="tab" data-tab="projects" onclick="switchTab('projects')">프로젝트</button><button class="tab" data-tab="activities" onclick="switchTab('activities')">루틴</button><button class="tab" data-tab="records" onclick="switchTab('records')">기록</button><button class="tab" data-tab="settings" onclick="switchTab('settings')">설정</button></nav>
 <div class="review uiHealth" id="uiHealthBanner"></div>
 <section class="tabpage active" id="today">
@@ -309,7 +309,7 @@ function renderTimerPipSetting(){
 }
 function timerPipText(){
   if(finishedTimerNotice)return {label:finishedTimerNotice.label||'타이머',time:'완료',sub:(finishedTimerNotice.minutes||0)+'분 기록 완료',done:true,running:false};
-  if(!timer)return {label:'입체시간',time:'--:--',sub:'타이머를 시작해 주세요.',done:false,running:false};
+  if(!timer)return {label:'입체시간',time:'--:--',sub:'앱에서 타이머를 시작하면 여기에 표시됩니다.',done:false,running:false};
   const elapsed=timerElapsedSeconds(),sec=timer.mode==='countdown'?Math.max(0,timer.durationSec-elapsed):elapsed,m=Math.floor(sec/60),ss=sec%60;
   return {label:timer.label||'타이머',time:String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0'),sub:timer.running?(timer.mode==='countdown'?'남은 시간':'진행 시간'):'일시정지',done:false,running:!!timer.running};
 }
@@ -325,6 +325,7 @@ function buildTimerPip(pip){
   pip.addEventListener('pagehide',()=>{if(timerPipWindow===pip){timerPipWindow=null;document.getElementById('timerbar')?.classList.remove('pipActive')}} ,{once:true});
   document.getElementById('timerbar')?.classList.add('pipActive');
   updateTimerPip();
+  try{requestAnimationFrame(()=>updateTimerPip())}catch(e){}
 }
 async function openTimerPip(silent=false){
   if(!supportsTimerPip()){if(!silent)alert('PC 떠있는 타이머는 Chrome/Edge에서 사용할 수 있습니다.');return null}
@@ -332,7 +333,7 @@ async function openTimerPip(silent=false){
   if(timerPipOpening)return null;
   timerPipOpening=true;
   try{
-    const pip=await window.documentPictureInPicture.requestWindow({width:280,height:170});
+    const pip=await window.documentPictureInPicture.requestWindow({width:270,height:160});
     timerPipWindow=pip;buildTimerPip(pip);return pip;
   }catch(e){if(!silent)alert('떠있는 타이머 창을 열지 못했습니다. 타이머의 ‘PC 창’ 버튼을 다시 눌러 주세요.');return null}
   finally{timerPipOpening=false}
@@ -359,11 +360,11 @@ function toggleTimerWidget(){ui.timerWidgetCollapsed=!ui.timerWidgetCollapsed;co
 function showTimerBarFromState(){if(!timer)return;const full=timer.label+(timer.mode==='countdown'?' · '+Math.round(timer.durationSec/60)+'분':' · 스톱워치');document.getElementById('timerLabel').textContent=full;const mini=document.getElementById('timerMiniLabel');if(mini)mini.textContent=timer.label;const bar=document.getElementById('timerbar');bar.classList.remove('finished');bar.classList.add('show');bar.classList.toggle('collapsed',!!ui.timerWidgetCollapsed);const cb=document.getElementById('timerCollapseBtn');if(cb)cb.textContent=ui.timerWidgetCollapsed?'펼치기':'접기';document.getElementById('timerPauseBtn').textContent=timer.running?'일시정지':'계속';renderTimerClock();updateTimerPip()}
 async function restoreTimerState(){let raw=null;try{raw=localStorage.getItem(TIMER_STORE_KEY)}catch(e){}if(!raw)return;try{const t=JSON.parse(raw);if(!t||!t.sessionId){localStorage.removeItem(TIMER_STORE_KEY);return}timer={...t,interval:null};showTimerBarFromState();const elapsed=timerElapsedSeconds();if(timer.mode==='countdown'&&timer.running&&elapsed>=timer.durationSec&&!timer.finished){timer.finished=true;persistTimerState();await stopTimer(true,true);return}if(timer.running){timer.interval=setInterval(tick,1000);tick()}}catch(e){console.error('timer restore',e);localStorage.removeItem(TIMER_STORE_KEY);timer=null}}
 function restoreFinishedNotice(){let raw=null;try{raw=localStorage.getItem(TIMER_DONE_KEY)}catch(e){}if(!raw)return;try{finishedTimerNotice=JSON.parse(raw);if(finishedTimerNotice){showTimerDoneNotice(finishedTimerNotice.label,finishedTimerNotice.minutes);startAlarmLoop();sendSystemTimerNotice(finishedTimerNotice.label,finishedTimerNotice.minutes)}}catch(e){localStorage.removeItem(TIMER_DONE_KEY);finishedTimerNotice=null}}
-function startTimer(targetType,targetId,label,fixedMinutes=null){if(timer)return alert('이미 타이머가 실행 중입니다.');if(fixedMinutes!==null){maybeAutoOpenTimerPip();void beginTimer(targetType,targetId,label,'countdown',Number(fixedMinutes));return}timerSetupTarget={targetType,targetId,label};document.getElementById('timerSetupTarget').textContent='지금 기록: '+label;document.getElementById('timerFreeRow').style.display='none';document.getElementById('timerSetupOverlay').classList.add('show')}
+function startTimer(targetType,targetId,label,fixedMinutes=null){if(timer)return alert('이미 타이머가 실행 중입니다.');if(fixedMinutes!==null){beginTimer(targetType,targetId,label,'countdown',Number(fixedMinutes));return}timerSetupTarget={targetType,targetId,label};document.getElementById('timerSetupTarget').textContent='지금 기록: '+label;document.getElementById('timerFreeRow').style.display='none';document.getElementById('timerSetupOverlay').classList.add('show')}
 function closeTimerSetup(){document.getElementById('timerSetupOverlay').classList.remove('show');timerSetupTarget=null}
-function startTimerFromSetup(mode){if(!timerSetupTarget)return;if(mode==='free'){document.getElementById('timerFreeRow').style.display='flex';document.getElementById('timerFreeMinutes').focus();return}maybeAutoOpenTimerPip();const t=timerSetupTarget;closeTimerSetup();void beginTimer(t.targetType,t.targetId,t.label,mode==='fixed30'?'countdown':'stopwatch',mode==='fixed30'?30:null)}
-function confirmFreeTimer(){if(!timerSetupTarget)return;const n=Number(document.getElementById('timerFreeMinutes').value);if(!Number.isFinite(n)||n<=0)return alert('분을 1 이상으로 입력해 주세요.');maybeAutoOpenTimerPip();const t=timerSetupTarget;closeTimerSetup();void beginTimer(t.targetType,t.targetId,t.label,'countdown',n)}
-async function beginTimer(targetType,targetId,label,mode,minutes=null){if(timer)return alert('이미 타이머가 실행 중입니다.');await prepareAlertPermission();stopAlarmLoop();const now=Date.now();timer={sessionId:uid(),targetType,targetId,label,mode,durationSec:mode==='countdown'?Math.max(1,Math.round(minutes*60)):null,elapsedBase:0,runStartedAt:now,sessionStart:now,localDate:today(),focusShown:false,finished:false,running:true};focusContext={targetId,label,localDate:today()};persistTimerState();showTimerBarFromState();tick();timer.interval=setInterval(tick,1000)}
+function startTimerFromSetup(mode){if(!timerSetupTarget)return;if(mode==='free'){document.getElementById('timerFreeRow').style.display='flex';document.getElementById('timerFreeMinutes').focus();return}const t=timerSetupTarget;closeTimerSetup();beginTimer(t.targetType,t.targetId,t.label,mode==='fixed30'?'countdown':'stopwatch',mode==='fixed30'?30:null)}
+function confirmFreeTimer(){if(!timerSetupTarget)return;const n=Number(document.getElementById('timerFreeMinutes').value);if(!Number.isFinite(n)||n<=0)return alert('분을 1 이상으로 입력해 주세요.');const t=timerSetupTarget;closeTimerSetup();beginTimer(t.targetType,t.targetId,t.label,'countdown',n)}
+function beginTimer(targetType,targetId,label,mode,minutes=null){if(timer)return alert('이미 타이머가 실행 중입니다.');stopAlarmLoop();const now=Date.now();timer={sessionId:uid(),targetType,targetId,label,mode,durationSec:mode==='countdown'?Math.max(1,Math.round(minutes*60)):null,elapsedBase:0,runStartedAt:now,sessionStart:now,localDate:today(),focusShown:false,finished:false,running:true};focusContext={targetId,label,localDate:today()};persistTimerState();showTimerBarFromState();tick();timer.interval=setInterval(tick,1000);if(supportsTimerPip()&&timerPipAutoEnabled())void openTimerPip(true);void prepareAlertPermission()}
 function timerElapsedSeconds(){if(!timer)return 0;return Number(timer.elapsedBase||0)+(timer.running?Math.max(0,Math.floor((Date.now()-Number(timer.runStartedAt||Date.now()))/1000)):0)}
 function renderTimerClock(){if(!timer)return;const elapsed=timerElapsedSeconds(),sec=timer.mode==='countdown'?Math.max(0,timer.durationSec-elapsed):elapsed,m=Math.floor(sec/60),ss=sec%60,txt=String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');const el=document.getElementById('timerTime'),mini=document.getElementById('timerMiniTime');if(el)el.textContent=txt;if(mini)mini.textContent=txt;updateTimerPip()}
 function tick(){if(!timer)return;renderTimerClock();if(!timer.running)return;const elapsed=timerElapsedSeconds();const focusAt=timer.mode==='stopwatch'?1800:(timer.durationSec>=2700?Math.floor(timer.durationSec/2):null);if(!timer.focusShown&&focusAt!==null&&elapsed>=focusAt){timer.focusShown=true;persistTimerState();showFocus()}if(timer.mode==='countdown'&&elapsed>=timer.durationSec&&!timer.finished){timer.finished=true;persistTimerState();void stopTimer(true)}}
