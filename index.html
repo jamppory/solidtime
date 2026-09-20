@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1,viewport-fit=cover" name="viewport"/>
-<title>입체시간 v0.9 · C.3.3 주간달력 독립복구</title>
+<title>입체시간 v0.9 · C.3.8 동기화 안정화</title>
 <style>
 :root{--bg:#f6f5f2;--card:#fff;--ink:#222;--muted:#777;--line:#e6e2dc;--accent:#5f6f65;--r:16px}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;overflow-x:hidden}
@@ -27,6 +27,15 @@ button,input,textarea,select{font:inherit} button{cursor:pointer}.app{max-width:
 .quickHandles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}.quickHandles .btn{min-height:50px;font-weight:850}.safeNote{border-left:4px solid #6d8978;background:#f8fbf8}.settingsIntro{padding:10px 12px;border-radius:12px;background:#f2f3f0;color:#59635d;font-size:13px}.safetyCount{font-variant-numeric:tabular-nums;font-weight:800}@media(max-width:420px){.topTabs .tab,.tabs .tab{font-size:12px;padding-left:1px;padding-right:1px}}
 
 /* C.3.4: calendar / floating timer / project visibility */
+
+.calendarOuterFold{padding:0;overflow:hidden}
+.calendarOuterSummary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;cursor:pointer;list-style:none;font-size:18px;font-weight:800}
+.calendarOuterSummary::-webkit-details-marker{display:none}
+.calendarOuterSummary:after{content:"접기";font-size:12px;font-weight:700;color:var(--muted);margin-left:auto}
+.calendarOuterFold:not([open]) .calendarOuterSummary:after{content:"펼치기"}
+.calendarOuterFold>.muted,.calendarOuterFold>#todayWeekCalendar,.calendarOuterFold>#weekCalendar{margin-left:16px;margin-right:16px}
+.calendarOuterFold>#todayWeekCalendar,.calendarOuterFold>#weekCalendar{padding-bottom:14px}
+
 .calendarShell{display:grid;gap:10px;margin-top:10px}
 .calendarToolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .calendarToolbar .btn.active{background:#315f4e;color:#fff;border-color:#315f4e;font-weight:800}
@@ -66,7 +75,7 @@ button,input,textarea,select{font:inherit} button{cursor:pointer}.app{max-width:
 </head>
 <body>
 <div class="app">
-<div class="top"><div><div class="title">입체시간</div><div class="ver">v0.9 · C.3.7 PC 떠있는 타이머 수정 · schema 0.9.0</div></div><div class="row"><button class="btn small" id="modeBtn" onclick="toggleMode()">🔥 스프린트</button><button class="btn small" id="soundBtn" onclick="toggleSound()">소리 켬</button><button class="btn small timerBtn" id="alarmTestBtn" onclick="testAlarm()">알림 시험</button><div class="status" id="saveStatus">로컬 저장 준비 중</div></div></div>
+<div class="top"><div><div class="title">입체시간</div><div class="ver">v0.9 · C.3.8 동기화 안정화 · schema 0.9.0</div></div><div class="row"><button class="btn small" id="modeBtn" onclick="toggleMode()">🔥 스프린트</button><button class="btn small" id="soundBtn" onclick="toggleSound()">소리 켬</button><button class="btn small timerBtn" id="alarmTestBtn" onclick="testAlarm()">알림 시험</button><div class="status" id="saveStatus">로컬 저장 준비 중</div></div></div>
 <nav aria-label="상단 화면 전환" class="topTabs"><button class="tab active" data-tab="today" onclick="switchTab('today')">오늘</button><button class="tab" data-tab="projects" onclick="switchTab('projects')">프로젝트</button><button class="tab" data-tab="activities" onclick="switchTab('activities')">루틴</button><button class="tab" data-tab="records" onclick="switchTab('records')">기록</button><button class="tab" data-tab="settings" onclick="switchTab('settings')">설정</button></nav>
 <div class="review uiHealth" id="uiHealthBanner"></div>
 <section class="tabpage active" id="today">
@@ -75,16 +84,16 @@ button,input,textarea,select{font:inherit} button{cursor:pointer}.app{max-width:
 <div class="card"><div class="sectionhead"><h2>아침 투입함</h2><span class="pill">일단 적기 → 나중에 보내기</span></div><div class="row"><input class="field grow" id="inboxInput" placeholder="해야 할 일이나 떠오른 생각"/><button class="btn" onclick="addInbox()">추가</button></div><div id="inboxList"></div></div>
 <div class="card"><div class="sectionhead"><h2>중단 손잡이</h2><span class="pill">각 10분 · 바로 시작</span></div><div class="quickHandles"><button class="btn timerBtn" onclick="startQuickTimer('shorts',10,'쇼츠')">쇼츠</button><button class="btn timerBtn" onclick="startQuickTimer('recovery',10,'회복')">회복</button><button class="btn timerBtn" onclick="startQuickTimer('blank',10,'멍')">멍</button></div></div>
 <div class="grid2"><div class="card"><h2>오늘 프로젝트</h2><div class="empty" id="todayProjects">프로젝트가 없습니다.</div></div><div class="card"><h2>오늘 루틴</h2><div class="empty" id="todayActivities">루틴이 없습니다.</div></div></div>
-<div class="card"><div class="sectionhead"><h2>달력</h2><span class="pill">주간 · 월간 · 연간</span></div><div class="muted">기본은 오늘부터 다음 7일을 바로 보여주고, 지난 7일은 접어둡니다. 월간·연간으로도 전체 흐름을 볼 수 있습니다.</div><div id="todayWeekCalendar"></div></div>
+<details class="card calendarOuterFold" open><summary class="calendarOuterSummary"><span>달력</span><span class="pill">주간 · 월간 · 연간</span></summary><div class="muted">기본은 오늘부터 다음 7일을 바로 보여주고, 지난 7일은 접어둡니다. 필요할 때 달력 전체도 접을 수 있습니다.</div><div id="todayWeekCalendar"></div></details>
 <div class="card"><h2>3층 생활</h2><div class="row"><button class="btn" onclick="quickLife('people')">사람</button><button class="btn" onclick="quickLife('self')">나</button><button class="btn" onclick="quickLife('living')">생활</button></div><div id="lifeList"></div></div>
 <div class="grid2"><div class="card"><div class="sectionhead"><h2>생각 씨앗</h2><button class="btn" onclick="addIdea()">+ 씨앗</button></div><div id="ideaList"></div></div><div class="card"><div class="sectionhead"><h2>항해 프로젝트</h2><button class="btn" onclick="addVoyage()">+ 항해</button></div><div id="voyageList"></div></div></div>
 </section>
-<section class="tabpage" id="projects"><div class="card"><div class="sectionhead"><h2>프로젝트</h2><button class="btn primary" onclick="addProject()">+ 프로젝트</button></div><div class="muted">프로젝트마다 색을 넓게 표시합니다. 타이머·보관·삭제는 카드를 펼치지 않아도 바로 쓸 수 있습니다.</div><div id="projectList"></div></div><div class="card"><div class="sectionhead"><h2>달력</h2><span class="pill">주간 · 월간 · 연간</span></div><div id="weekCalendar"></div></div><div class="card"><div class="sectionhead"><h2>완료·보관 프로젝트</h2><span class="pill" id="projectArchiveCount">0</span></div><div id="projectArchiveList"></div></div><div class="card"><div class="sectionhead"><h2>삭제된 프로젝트</h2><span class="pill" id="projectTrashCount">0</span></div><div class="muted">삭제해도 바로 지우지 않고 이곳에 보관합니다. 필요하면 다시 살릴 수 있습니다.</div><div id="projectTrashList"></div></div></section>
+<section class="tabpage" id="projects"><div class="card"><div class="sectionhead"><h2>프로젝트</h2><button class="btn primary" onclick="addProject()">+ 프로젝트</button></div><div class="muted">프로젝트마다 색을 넓게 표시합니다. 타이머·보관·삭제는 카드를 펼치지 않아도 바로 쓸 수 있습니다.</div><div id="projectList"></div></div><details class="card calendarOuterFold" open><summary class="calendarOuterSummary"><span>달력</span><span class="pill">주간 · 월간 · 연간</span></summary><div id="weekCalendar"></div></details><div class="card"><div class="sectionhead"><h2>완료·보관 프로젝트</h2><span class="pill" id="projectArchiveCount">0</span></div><div id="projectArchiveList"></div></div><div class="card"><div class="sectionhead"><h2>삭제된 프로젝트</h2><span class="pill" id="projectTrashCount">0</span></div><div class="muted">삭제해도 바로 지우지 않고 이곳에 보관합니다. 필요하면 다시 살릴 수 있습니다.</div><div id="projectTrashList"></div></div></section>
 <section class="tabpage" id="activities"><div class="card"><div class="sectionhead"><h2>루틴·활동</h2><button class="btn primary" onclick="addActivity()">+ 활동</button></div><div class="muted">이어가는 활동과 끝이 있는 독서·학습을 구분해 기록합니다.</div><div id="activityList"></div></div><div class="card"><div class="sectionhead"><h2>완료·보관 활동</h2><span class="pill" id="activityArchiveCount">0</span></div><div id="activityArchiveList"></div></div></section>
 <section class="tabpage" id="records">
 <div class="card"><div class="sectionhead"><h2>직접 시간 입력</h2><span class="pill">v0.8 방식 복원</span></div><div id="manualTimePanel"></div><div class="muted manualHint">시작·종료 시각을 넣거나, 총 분만 입력해도 됩니다.</div></div>
 <div class="card"><div class="sectionhead"><h2>기록·분석</h2><span class="pill">시간 기록</span></div><div class="muted" id="recordSummary"></div><div class="metrics" id="recordMetrics" style="margin:10px 0"></div><div class="filterbar"><input class="field" id="recordSearch" oninput="renderRecords()" placeholder="기록 검색"/><select class="field" id="recordRange" onchange="renderRecords()"><option value="2">오늘·어제</option><option value="7">최근 7일</option><option value="all">전체</option></select><select class="field" id="recordKind" onchange="renderRecords()"><option value="all">전체 분류</option><option value="project">프로젝트</option><option value="routine">루틴</option><option value="life">생활</option><option value="recovery">회복</option><option value="shorts">쇼츠</option><option value="blank">멍</option><option value="other">기타</option></select></div><div id="linkReview"></div><div id="recordList"></div></div>
-<div class="card"><div class="sectionhead"><h2>시간 사용 비율</h2><span class="pill">v0.8 도넛 복원</span></div><div class="chartControls"><button class="btn active" id="chartToday" onclick="setChartRange('today')">오늘</button><button class="btn" id="chartWeek" onclick="setChartRange('week')">최근 7일</button><button class="btn active" id="chartKind" onclick="setChartMode('kind')">분류별</button><button class="btn" id="chartProject" onclick="setChartMode('project')">프로젝트별</button><button class="btn" id="chartRoutine" onclick="setChartMode('routine')">루틴별</button></div><div class="chartArea"><div class="donut" id="timeDonut"><div class="donutCenter" id="donutTotal"></div></div><div class="chartLegend" id="chartLegend"></div></div></div>
+<div class="card"><div class="sectionhead"><h2>시간 사용 비율</h2><span class="pill">v0.8 도넛 복원</span></div><div class="chartControls"><button class="btn active" id="chartToday" onclick="setChartRange('today')">오늘</button><button class="btn" id="chartWeek" onclick="setChartRange('week')">최근 7일 평균</button><button class="btn active" id="chartKind" onclick="setChartMode('kind')">분류별</button><button class="btn" id="chartProject" onclick="setChartMode('project')">프로젝트별</button><button class="btn" id="chartRoutine" onclick="setChartMode('routine')">루틴별</button></div><div class="chartArea"><div class="donut" id="timeDonut"><div class="donutCenter" id="donutTotal"></div></div><div class="chartLegend" id="chartLegend"></div></div></div>
 <div class="card"><h2>날짜 메모</h2><div class="row"><input class="field grow" id="dailyNoteDate" type="date"/><button class="btn" onclick="loadDailyNote()">불러오기</button></div><textarea class="field notearea" id="dailyNoteText" placeholder="선택한 날짜의 자유 메모"></textarea><button class="btn primary" onclick="saveDailyNote()">메모 저장</button></div>
 <div class="card"><div class="sectionhead"><h2>하루 시간표 · 생활 리듬</h2><span class="pill">v0.8 타임테이블 복원</span></div><div class="row"><input class="field grow" id="reviewDate" onchange="renderDayReview()" type="date"/><button class="btn" onclick="setReviewToday()">오늘</button></div><div class="row" style="margin-top:8px"><label class="grow small">기상 시각<input class="field" id="wakeTime" onchange="saveDayRhythm()" type="time"/></label><label class="grow small">저녁 휴식 시작 목표<input class="field" id="restTime" onchange="saveDayRhythm()" type="time"/></label></div><div class="muted" id="dayReviewSummary" style="margin-top:8px"></div><div class="rhythmStats" id="rhythmStats"></div><div class="timelineWrap"><div class="timelineGraph" id="dayTimeline"></div></div><div class="timelineUntimed small muted" id="untimedLogs"></div><details style="margin-top:10px"><summary>시간 기록 목록 보기</summary><div class="timelineListFallback" id="dayTimelineList"></div></details><div class="row" style="margin-top:10px"><select class="field grow" id="reviewLifeCategory"><option value="people">사람</option><option value="self">나</option><option value="living">생활</option></select><input class="field grow" id="reviewLifeText" placeholder="선택한 날짜의 생활 기록"/><button class="btn" onclick="addReviewLife()">추가</button></div><div id="reviewLifeList"></div></div>
 <div class="card"><div class="sectionhead"><h2>항목별 시간</h2><span class="pill">실제 → 다음 계획</span></div><div class="muted">전체 누적과 최근 7일을 항목별로 봅니다.</div><div id="targetAnalysis"></div></div>
@@ -113,7 +122,7 @@ let cloudConfig={projectUrl:'',publishableKey:'',accessToken:'',refreshToken:'',
 function uid(){return (globalThis.crypto&&typeof globalThis.crypto.randomUUID==='function')?globalThis.crypto.randomUUID():'id-'+Date.now()+'-'+Math.random().toString(16).slice(2)}
 function today(){const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
 const state={settings:{schemaVersion:SCHEMA,nextAction:'',mode:'sprint',soundEnabled:true,timezone:'Asia/Seoul',deviceId:null,lastLocalSavedAt:null,sync:{provider:null,status:'local_only',lastSyncAt:null,lastRemoteRevision:null}},projects:[],projectArchive:[],projectTrash:[],projectTasks:[],projectWorkItems:[],activities:[],activityArchive:[],activityDays:[],activityNotes:[],activityTodos:[],inbox:[],lifeTasks:[],legacyLifeFlags:[],timeLogs:[],allocations:[],rollovers:[],dailyNotes:[],ideas:[],ideaNodes:[],voyages:[],dayRhythms:[],focusChecks:[],importBatches:[],backups:[],syncQueue:[],syncConflicts:[],legacyExtras:{}};
-let pendingImport=null; let lastImportBackupId=null; let focusContext=null; let chartRange='today'; let chartMode='kind'; let calendarMode='centered'; let calendarAnchor=today(); let calendarYear=Number(today().slice(0,4)); const ui={openProjects:{},openActivities:{},openProjectArchive:{},openActivityArchive:{},openDays:{[today()]:true},timerMode:'stopwatch',timerWidgetCollapsed:false};
+let pendingImport=null; let lastImportBackupId=null; let focusContext=null; let chartRange='today'; let chartMode='kind'; let calendarMode='centered'; let calendarAnchor=today(); let calendarYear=Number(today().slice(0,4)); let syncBusy=false; let autoSyncTimer=null; const ui={openProjects:{},openActivities:{},openProjectArchive:{},openActivityArchive:{},openDays:{[today()]:true},timerMode:'stopwatch',timerWidgetCollapsed:false};
 function openDB(){
   if(db)return Promise.resolve(db);
   if(dbOpenPromise)return dbOpenPromise;
@@ -129,7 +138,7 @@ async function dbGet(k){const d=await openDB();return new Promise((res,rej)=>{co
 async function dbSet(k,v){const d=await openDB();return new Promise((res,rej)=>{const q=d.transaction('app','readwrite').objectStore('app').put(v,k);q.onsuccess=()=>res();q.onerror=()=>rej(q.error)})}
 function ensureSyncState(){state.settings=state.settings||{};state.settings.deviceId=state.settings.deviceId||uid();state.settings.sync=state.settings.sync||{provider:null,status:'local_only',lastSyncAt:null,lastRemoteRevision:null};state.syncQueue=state.syncQueue||[];state.syncConflicts=state.syncConflicts||[]}
 function queueLocalSnapshot(reason='local_change'){ensureSyncState();const now=new Date().toISOString(),last=state.syncQueue[state.syncQueue.length-1];if(last&&last.status==='pending'){last.updatedAt=now;last.reason=reason}else state.syncQueue.push({id:uid(),type:'snapshot',status:'pending',createdAt:now,updatedAt:now,reason,deviceId:state.settings.deviceId});if(state.syncQueue.length>30)state.syncQueue=state.syncQueue.slice(-30)}
-async function save(reason='local_change'){ensureSyncState();state.settings.schemaVersion=SCHEMA;state.settings.lastLocalSavedAt=new Date().toISOString();if(state.settings.sync.status!=='local_only')queueLocalSnapshot(reason);await dbSet('state',structuredClone(state));const el=document.getElementById('saveStatus');if(el)el.textContent='이 기기에 저장됨';renderSyncStatus()}
+async function save(reason='local_change'){ensureSyncState();state.settings.schemaVersion=SCHEMA;state.settings.lastLocalSavedAt=new Date().toISOString();if(state.settings.sync.status!=='local_only')queueLocalSnapshot(reason);await dbSet('state',structuredClone(state));const el=document.getElementById('saveStatus');if(el)el.textContent='이 기기에 저장됨';renderSyncStatus();if(!syncBusy&&state.settings.sync.status==='connected')scheduleAutoSync(1800)}
 function normalizeAllocationState(){
   if(Array.isArray(state.allocations))return false;
   const legacy=state.allocations, next=[];
@@ -166,7 +175,7 @@ async function init(){
   const beforeInbox=(state.inbox||[]).length;reconcileInboxJournal();const recoveredInbox=(state.inbox||[]).length-beforeInbox;
   await dbSet('state',structuredClone(state));
   document.getElementById('saveStatus').textContent=recoveredInbox?`투입함 ${recoveredInbox}건 복구됨`:'이 기기에 저장됨';
-  render();updateRollbackButton();await loadCloudSetup();renderSyncStatus();uiHealthCheck();
+  render();updateRollbackButton();await loadCloudSetup();renderSyncStatus();uiHealthCheck();if(state.settings.sync.status==='connected'&&cloudConfig.accessToken&&cloudConfig.refreshToken)scheduleAutoSync(700);
   // 주간 달력은 초기화 마지막에도 독립적으로 한 번 더 보장한다.
   try{renderWeekCalendar()}catch(e){console.error(e)}
   setTimeout(()=>{try{renderWeekCalendar()}catch(e){console.error(e)}},50);
@@ -217,8 +226,8 @@ function tone(freq,at,dur=.34,vol=.32){const c=ensureAudioReady();if(!c)return;t
 function primeAudio(){const c=ensureAudioReady();if(!c)return;try{const o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);g.gain.value=.00001;o.frequency.value=440;o.start();o.stop(c.currentTime+.04)}catch(e){}}
 function playSoundTest(){const c=ensureAudioReady();if(!c)return;const t=c.currentTime+.04;tone(660,t,.38,.34);tone(880,t+.45,.38,.36);tone(1047,t+.90,.5,.38)}
 function playAlarmBurst(){if(!alarmActive||state.settings.soundEnabled===false)return;const c=ensureAudioReady();if(!c)return;const t=c.currentTime+.04;tone(660,t,.42,.38);tone(880,t+.48,.42,.40);tone(1047,t+.96,.55,.42);tone(880,t+1.58,.42,.38)}
-function startTitleAlarm(){stopTitleAlarm();const base='입체시간 v0.9 · C.3.3 주간달력 독립복구';let flip=false;titleAlarmInterval=setInterval(()=>{flip=!flip;document.title=flip?'⏰ 타이머 완료 · 입체시간':base},800)}
-function stopTitleAlarm(){if(titleAlarmInterval){clearInterval(titleAlarmInterval);titleAlarmInterval=null}document.title='입체시간 v0.9 · C.3.3 주간달력 독립복구'}
+function startTitleAlarm(){stopTitleAlarm();const base='입체시간 v0.9 · C.3.8 동기화 안정화';let flip=false;titleAlarmInterval=setInterval(()=>{flip=!flip;document.title=flip?'⏰ 타이머 완료 · 입체시간':base},800)}
+function stopTitleAlarm(){if(titleAlarmInterval){clearInterval(titleAlarmInterval);titleAlarmInterval=null}document.title='입체시간 v0.9 · C.3.8 동기화 안정화'}
 function startAlarmLoop(){stopAlarmLoop();alarmActive=true;playAlarmBurst();startTitleAlarm();try{navigator.vibrate?.([500,220,500,220,700])}catch(e){}alarmInterval=setInterval(()=>{playAlarmBurst();try{navigator.vibrate?.([400,180,400])}catch(e){}},2600)}
 function stopAlarmLoop(){alarmActive=false;if(alarmInterval){clearInterval(alarmInterval);alarmInterval=null}stopTitleAlarm();try{navigator.vibrate?.(0)}catch(e){}}
 async function prepareAlertPermission(){primeAudio();try{if('Notification' in window&&Notification.permission==='default')await Notification.requestPermission()}catch(e){}}
@@ -247,7 +256,7 @@ function renderProjects(){
   const tr=state.projectTrash||[];const tc=document.getElementById('projectTrashCount'),tl=document.getElementById('projectTrashList');if(tc)tc.textContent=tr.length;if(tl)tl.innerHTML=tr.map((x,idx)=>`<div class="subcard trashCard projectCard" style="${projectCardStyle(x,idx)}"><div class="sectionhead"><div class="grow"><b>${esc(x.name)}</b><div class="small muted">삭제 ${esc(x.deletedAt||'')} · 시간기록은 보존됨</div></div><button class="btn" onclick="restoreDeletedProject('${x.id}')">복구</button></div></div>`).join('')||'<div class="empty">삭제된 프로젝트가 없습니다.</div>';
 }
 async function renameProject(id){const p=state.projects.find(x=>x.id===id);if(!p)return;const v=prompt('프로젝트 이름',p.name);if(!v?.trim())return;p.name=v.trim();p.updatedAt=new Date().toISOString();await save();render()}
-async function changeProjectColor(id){const p=state.projects.find(x=>x.id===id);if(!p)return;const v=prompt('색상 (#RRGGBB)',p.color||'#ffffff');if(!/^#[0-9a-fA-F]{6}$/.test(v||''))return;p.color=v;await save();render()}
+async function changeProjectColor(id){const p=state.projects.find(x=>x.id===id);if(!p)return;const v=prompt('색상 (#RRGGBB)',p.color||'#ffffff');if(!/^#[0-9a-fA-F]{6}$/.test(v||''))return;p.color=v;p.updatedAt=new Date().toISOString();await save();render()}
 async function moveProject(id,dir){const a=state.projects.filter(x=>x.status==='active'),i=a.findIndex(x=>x.id===id),j=i+dir;if(i<0||j<0||j>=a.length)return;const posA=state.projects.indexOf(a[i]),posB=state.projects.indexOf(a[j]);[state.projects[posA],state.projects[posB]]=[state.projects[posB],state.projects[posA]];await save();render()}
 function toggleProjectArchive(id){ui.openProjectArchive[id]=!ui.openProjectArchive[id];renderProjects()}
 function taskHTML(t,all){const subs=all.filter(x=>x.parentId===t.id).sort((a,b)=>(a.order||0)-(b.order||0));return `<div><div class="taskrow"><input type="checkbox" ${t.done?'checked':''} onchange="toggleTask('${t.id}')"><div class="grow">${esc(t.text)}</div><button class="btn small" onclick="addSubtask('${t.id}')">+ 하위</button></div>${subs.map(s=>`<div class="taskrow indent"><input type="checkbox" ${s.done?'checked':''} onchange="toggleTask('${s.id}')"><div>${esc(s.text)}</div></div>`).join('')}</div>`}
@@ -263,11 +272,11 @@ async function moveWorkTomorrow(id){const w=state.projectWorkItems.find(x=>x.id=
 function weekDates(){const d=new Date(today()+'T12:00:00'),day=(d.getDay()+6)%7,m=new Date(d);m.setDate(d.getDate()-day);return Array.from({length:7},(_,i)=>{const x=new Date(m);x.setDate(m.getDate()+i);return localDateFrom(x)})}
 function weekAllocationHTML(pid){return `<div class="calendar">${weekDates().map(d=>{const a=state.allocations.find(x=>x.date===d&&x.projectId===pid);return `<button class="day ${d===today()?'today':''}" onclick="setAllocation('${pid}','${d}')">${Number(d.slice(-2))}<br>${a?.plannedMinutes||0}분</button>`}).join('')}</div>`}
 async function setAllocation(pid,date){const raw=prompt(date+' 계획 분',String(state.allocations.find(x=>x.date===date&&x.projectId===pid)?.plannedMinutes||30));if(raw===null)return;const mins=Number(raw);if(!Number.isFinite(mins)||mins<0)return;let a=state.allocations.find(x=>x.date===date&&x.projectId===pid);if(a)a.plannedMinutes=mins;else state.allocations.push({id:uid(),date,projectId:pid,plannedMinutes:mins,linkStatus:'linked'});await save();render()}
-async function archiveProject(id){if(!confirm('완료·보관할까요? 기록과 시간은 유지됩니다.'))return;const i=state.projects.findIndex(x=>x.id===id);if(i<0)return;const x=state.projects.splice(i,1)[0];x.status='archived';x.archivedAt=today();state.projectArchive.push(x);await save();render()}
-async function restoreProject(id){const i=state.projectArchive.findIndex(x=>x.id===id);if(i<0)return;const x=state.projectArchive.splice(i,1)[0];x.status='active';x.archivedAt=null;state.projects.push(x);await save();render()}
-async function deleteProject(id){if(!confirm('이 프로젝트를 삭제함으로 보낼까요? 단계·메모·시간기록은 지우지 않습니다.'))return;const i=state.projects.findIndex(x=>x.id===id);if(i<0)return;const x=state.projects.splice(i,1)[0];x.status='deleted';x.deletedAt=today();state.projectTrash.push(x);await save('project_soft_delete');render()}
-async function deleteArchivedProject(id){if(!confirm('보관 프로젝트를 삭제함으로 보낼까요? 기록은 지우지 않습니다.'))return;const i=state.projectArchive.findIndex(x=>x.id===id);if(i<0)return;const x=state.projectArchive.splice(i,1)[0];x.status='deleted';x.deletedAt=today();state.projectTrash.push(x);await save('project_soft_delete');render()}
-async function restoreDeletedProject(id){const i=state.projectTrash.findIndex(x=>x.id===id);if(i<0)return;const x=state.projectTrash.splice(i,1)[0];x.status='active';x.deletedAt=null;x.archivedAt=null;state.projects.push(x);await save('project_restore');render()}
+async function archiveProject(id){if(!confirm('완료·보관할까요? 기록과 시간은 유지됩니다.'))return;const i=state.projects.findIndex(x=>x.id===id);if(i<0)return;const x=state.projects.splice(i,1)[0];x.status='archived';x.archivedAt=today();x.updatedAt=new Date().toISOString();state.projectArchive.push(x);await save();render()}
+async function restoreProject(id){const i=state.projectArchive.findIndex(x=>x.id===id);if(i<0)return;const x=state.projectArchive.splice(i,1)[0];x.status='active';x.archivedAt=null;x.updatedAt=new Date().toISOString();state.projects.push(x);await save();render()}
+async function deleteProject(id){if(!confirm('이 프로젝트를 삭제함으로 보낼까요? 단계·메모·시간기록은 지우지 않습니다.'))return;const i=state.projects.findIndex(x=>x.id===id);if(i<0)return;const x=state.projects.splice(i,1)[0];x.status='deleted';x.deletedAt=today();x.updatedAt=new Date().toISOString();state.projectTrash.push(x);await save('project_soft_delete');render()}
+async function deleteArchivedProject(id){if(!confirm('보관 프로젝트를 삭제함으로 보낼까요? 기록은 지우지 않습니다.'))return;const i=state.projectArchive.findIndex(x=>x.id===id);if(i<0)return;const x=state.projectArchive.splice(i,1)[0];x.status='deleted';x.deletedAt=today();x.updatedAt=new Date().toISOString();state.projectTrash.push(x);await save('project_soft_delete');render()}
+async function restoreDeletedProject(id){const i=state.projectTrash.findIndex(x=>x.id===id);if(i<0)return;const x=state.projectTrash.splice(i,1)[0];x.status='active';x.deletedAt=null;x.archivedAt=null;x.updatedAt=new Date().toISOString();state.projects.push(x);await save('project_restore');render()}
 
 async function addActivity(){const name=prompt('활동 이름');if(!name?.trim())return;const finite=confirm('책·강의처럼 끝이 있는 활동인가요?\n확인=끝이 있는 활동 / 취소=이어가는 활동');state.activities.push({id:uid(),name:name.trim(),color:'#ffffff',type:finite?'finite':'ongoing',status:'active',startedAt:today(),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});await save();render()}
 function renderActivities(){const a=state.activities.filter(x=>x.status==='active');const cards=a.map((x,idx)=>{const open=!!ui.openActivities[x.id],done=state.activityDays.some(d=>d.activityId===x.id&&d.date===today()&&d.completed),note=state.activityNotes.find(n=>n.activityId===x.id&&n.date===today()),todos=state.activityTodos.filter(t=>t.activityId===x.id&&t.date===today());return `<div class="subcard" style="border-left:4px solid ${esc(x.color||'#ddd')}"><div onclick="toggleActivityOpen('${x.id}')"><div class="sectionhead"><div class="name">${esc(x.name)}</div><span class="pill">${x.type==='finite'?'끝이 있는 활동':'이어가는 활동'} · ${sumTarget(x.id,'activity')}분</span></div></div>${open?`<div class="toolbar"><button class="btn" onclick="renameActivity('${x.id}')">이름</button><button class="btn" onclick="changeActivityColor('${x.id}')">색</button><button class="btn" onclick="moveActivity('${x.id}',-1)" ${idx===0?'disabled':''}>←</button><button class="btn" onclick="moveActivity('${x.id}',1)" ${idx===a.length-1?'disabled':''}>→</button><button class="btn" onclick="toggleActivityDay('${x.id}')">${done?'오늘 완료 취소':'오늘 실행 ✓'}</button><button class="btn timerBtn" onclick="startTimerFor('activity','${x.id}')">타이머</button><button class="btn" onclick="addActivityTodo('${x.id}')">+ 오늘 할 일</button><button class="btn danger" onclick="archiveActivity('${x.id}')">${x.type==='finite'?'완료':'종료·보관'}</button></div><textarea class="field notearea" placeholder="오늘 메모" onchange="saveActivityNote('${x.id}',this.value)">${esc(note?.text||'')}</textarea>${todos.map(t=>`<div class="taskrow"><input type="checkbox" ${t.done?'checked':''} onchange="toggleActivityTodo('${t.id}')"><div>${esc(t.text)}</div></div>`).join('')}`:''}</div>`}).join('');document.getElementById('activityList').innerHTML=cards||'<div class="empty">루틴이 없습니다.</div>';document.getElementById('todayActivities').innerHTML=a.length?a.map(x=>{const done=state.activityDays.some(d=>d.activityId===x.id&&d.date===today()&&d.completed);return `<div class="item"><span class="colorDot" style="background:${esc(x.color||'#ddd')}"></span><input type="checkbox" ${done?'checked':''} onchange="toggleActivityDay('${x.id}')"><div class="grow"><div class="name">${esc(x.name)}</div><div class="muted">${sumTarget(x.id,'activity')}분</div></div><button class="btn timerBtn" onclick="startTimerFor('activity','${x.id}')">타이머</button></div>`}).join(''):'<div class="empty">루틴이 없습니다.</div>';const ar=state.activityArchive||[];document.getElementById('activityArchiveCount').textContent=ar.length;document.getElementById('activityArchiveList').innerHTML=ar.map(x=>{const open=!!ui.openActivityArchive[x.id],days=state.activityDays.filter(d=>d.activityId===x.id).sort((a,b)=>String(b.date).localeCompare(String(a.date))),notes=state.activityNotes.filter(n=>n.activityId===x.id).sort((a,b)=>String(b.date).localeCompare(String(a.date)));return `<div class="subcard archive"><div class="sectionhead" onclick="toggleActivityArchive('${x.id}')"><div class="grow"><b>${esc(x.name)}</b><div class="muted">${x.completedAt||''} · 총 ${sumTarget(x.id,'activity')}분 · 실행 ${days.filter(d=>d.completed).length}일</div></div><span>${open?'접기':'상세'}</span></div>${open?`<div class="archiveDetail"><div class="small muted">실행 날짜</div>${days.filter(d=>d.completed).slice(0,40).map(d=>`<span class="pill">${esc(d.date)}</span>`).join(' ')||'<div class="empty">기록 없음</div>'}<div class="small muted" style="margin-top:8px">날짜별 메모</div>${notes.map(n=>`<div class="taskrow"><div class="small muted">${esc(n.date)}</div><div class="grow">${esc(n.text)}</div></div>`).join('')||'<div class="empty">메모 없음</div>'}</div>`:''}<button class="btn" onclick="restoreActivity('${x.id}')">다시 진행</button></div>`}).join('')||'<div class="empty">보관된 활동이 없습니다.</div>'}
@@ -397,7 +406,10 @@ function renderTimeChart(){
   for(const x of logs){const k=chartMode==='kind'?(names[x.kind]||'기타'):targetName(x);groups[k]=(groups[k]||0)+Number(x.minutes||0)}
   const rows=Object.entries(groups).sort((a,b)=>b[1]-a[1]),total=rows.reduce((a,x)=>a+x[1],0),colors=['#536f5d','#c78958','#7894ae','#ba7181','#9b8abb','#d1af55','#6e9b94','#a28b72'];
   if(!total){donut.style.background='#d9d8d1';center.innerHTML="0분<br><span class='small'>기록 없음</span>";legend.innerHTML='<div class="small muted">선택한 기간의 기록이 없습니다.</div>';return}
-  let at=0;const parts=rows.map((x,i)=>{const from=at,to=at+x[1]/total*100;at=to;return `${colors[i%colors.length]} ${from}% ${to}%`});donut.style.background=`conic-gradient(${parts.join(',')})`;center.innerHTML=`${total}분<br><span class="small">${chartRange==='today'?'오늘':'7일'}</span>`;legend.innerHTML=rows.map((x,i)=>`<div class="chartLegendRow"><span><i class="legendDot" style="background:${colors[i%colors.length]}"></i>${esc(x[0])}</span><b>${x[1]}분 · ${Math.round(x[1]/total*100)}%</b></div>`).join('')
+  let at=0;const parts=rows.map((x,i)=>{const from=at,to=at+x[1]/total*100;at=to;return `${colors[i%colors.length]} ${from}% ${to}%`});donut.style.background=`conic-gradient(${parts.join(',')})`;
+  const week=chartRange==='week', divisor=week?7:1, centerMinutes=Math.round(total/divisor);
+  center.innerHTML=`${centerMinutes}분<br><span class="small">${week?'하루 평균':'오늘'}</span>`;
+  legend.innerHTML=rows.map((x,i)=>{const shown=Math.round(x[1]/divisor);return `<div class="chartLegendRow"><span><i class="legendDot" style="background:${colors[i%colors.length]}"></i>${esc(x[0])}</span><b>${shown}분${week?'/일':''} · ${Math.round(x[1]/total*100)}%</b></div>`}).join('')
 }
 function filteredLogs(){const range=document.getElementById('recordRange')?.value||'2',kind=document.getElementById('recordKind')?.value||'all',q=(document.getElementById('recordSearch')?.value||'').trim().toLowerCase();let a=state.timeLogs.slice();if(range!=='all'){const n=Number(range),start=dateMinus(n-1);a=a.filter(x=>x.localDate&&x.localDate>=start&&x.localDate<=today())}if(kind!=='all')a=a.filter(x=>x.kind===kind);if(q)a=a.filter(x=>[targetName(x),x.labelSnapshot,x.note,x.localDate].some(v=>String(v||'').toLowerCase().includes(q)));return a.sort((a,b)=>String(b.localDate||'').localeCompare(String(a.localDate||''))||String(b.startTime||'').localeCompare(String(a.startTime||'')))}
 function renderRecords(){const logs=filteredLogs(),total=sumMinutes(logs),todayM=sumMinutes(state.timeLogs.filter(x=>x.localDate===today())),weekM=sumMinutes(state.timeLogs.filter(x=>x.localDate>=dateMinus(6)&&x.localDate<=today()));document.getElementById('recordSummary').textContent=`표시 ${logs.length}건 · ${total}분`;const targets={};for(const x of state.timeLogs){const k=(x.targetType||x.kind)+':'+(x.targetId||x.labelSnapshot||'none');targets[k]=(targets[k]||0)+Number(x.minutes||0)}const top=Object.entries(targets).sort((a,b)=>b[1]-a[1])[0];document.getElementById('recordMetrics').innerHTML=`<div class="metric"><div class="small muted">오늘</div><b>${todayM}분</b></div><div class="metric"><div class="small muted">최근 7일</div><b>${weekM}분</b></div><div class="metric"><div class="small muted">전체 기록</div><b>${state.timeLogs.length}건</b></div><div class="metric"><div class="small muted">가장 많이 한 항목</div><b>${top?top[1]+'분':'-'}</b></div>`;renderLinkReview();document.getElementById('recordList').innerHTML=logs.length?logs.map(x=>`<div class="item"><div class="grow"><b>${esc(targetName(x))}</b><div class="muted">${esc(x.localDate||'날짜 확인 필요')} · ${x.minutes}분${x.startTime?' · '+esc(x.startTime)+(x.endTime?'–'+esc(x.endTime):''):''}${x.manual?' · 직접 입력':''}</div>${x.note?`<div class="small">${esc(x.note)}</div>`:''}</div><button class="btn small" onclick="editTimeLog('${x.id}')">수정</button></div>`).join(''):'<div class="empty">해당 조건의 시간 기록이 없습니다.</div>';const d=document.getElementById('dailyNoteDate');if(d&&!d.value)d.value=today();renderTargetAnalysis();renderTimeChart()}
@@ -412,7 +424,7 @@ function renderManualTime(){
   }catch(e){p.innerHTML=`<div class="danger">직접 입력 화면을 불러오지 못했습니다: ${esc(e?.message||e)}</div><button class="btn" onclick="renderManualTime()">다시 불러오기</button>`;console.error('renderManualTime',e)}
 }
 async function addManualTime(){const kind=document.getElementById('manualKind').value,date=document.getElementById('manualDate').value,start=document.getElementById('manualStart').value,end=document.getElementById('manualEnd').value;let mins=Number(document.getElementById('manualMinutes').value),clockMins=null,cross=false;if(start&&end){const sm=clockMinutes(start),em=clockMinutes(end);clockMins=em-sm;if(clockMins<=0){clockMins+=1440;cross=true}if(mins>0&&Math.abs(mins-clockMins)>1)return alert('총 분과 시작·종료 시각이 서로 맞지 않습니다. 하나를 수정해 주세요.');mins=clockMins}if(!Number.isFinite(mins)||mins<=0)return alert('시간을 분으로 입력하거나 시작·종료 시각을 넣어주세요.');let targetType=null,targetId=null,label='';if(kind==='project'||kind==='routine'){targetType=kind==='project'?'project':'activity';targetId=document.getElementById('manualTarget')?.value||null;const pool=manualTargets(kind),t=pool.find(x=>x.id===targetId);if(!t)return alert('기록할 프로젝트나 루틴을 선택해 주세요.');label=t.name}else label=document.getElementById('manualLabel')?.value.trim()||({life:'생활',recovery:'회복',blank:'멍',shorts:'쇼츠',other:'기타'}[kind]||kind);const base={kind,targetType,targetId,labelSnapshot:label,manual:true,note:document.getElementById('manualNote').value.trim(),linkStatus:targetId?'linked':'unlinked',createdAt:new Date().toISOString()};if(cross&&isDate(date)){const sm=clockMinutes(start),em=clockMinutes(end),group=uid(),first=1440-sm,second=em;state.timeLogs.unshift(...[{...base,id:uid(),sessionGroupId:group,localDate:date,minutes:first,startTime:start,endTime:'24:00'},{...base,id:uid(),sessionGroupId:group,localDate:addDays(date,1),minutes:second,startTime:'00:00',endTime:end}].filter(x=>x.minutes>0))}else state.timeLogs.unshift({...base,id:uid(),minutes:Math.round(mins),localDate:isDate(date)?date:today(),startTime:start||null,endTime:end||null});await save('manual_time');renderRecords();renderManualTime();renderDayReview();renderTimeChart()}
-async function editTimeLog(id){const x=state.timeLogs.find(z=>z.id===id);if(!x)return;const raw=prompt('분 수정',String(x.minutes));if(raw===null)return;const mins=Number(raw);if(!Number.isFinite(mins)||mins<=0)return;const note=prompt('메모 수정',x.note||'');if(note===null)return;x.minutes=Math.round(mins);x.note=note;await save();render()}
+async function editTimeLog(id){const x=state.timeLogs.find(z=>z.id===id);if(!x)return;const raw=prompt('분 수정',String(x.minutes));if(raw===null)return;const mins=Number(raw);if(!Number.isFinite(mins)||mins<=0)return;const note=prompt('메모 수정',x.note||'');if(note===null)return;x.minutes=Math.round(mins);x.note=note;x.updatedAt=new Date().toISOString();await save();render()}
 function setReviewToday(){const el=document.getElementById('reviewDate');if(el){el.value=today();renderDayReview()}}
 function renderDayReview(){
   const dateEl=document.getElementById('reviewDate');if(!dateEl)return;if(!dateEl.value)dateEl.value=today();
@@ -468,12 +480,86 @@ function renderWeekCalendar(){
   }catch(e){console.error('calendar render',e);for(const id of targets){const el=document.getElementById(id);if(el)el.innerHTML=`<div class="review"><b>달력 표시 오류</b><div class="small">${esc(e?.message||e)}</div></div>`}}
 }
 function loadDailyNote(){const d=document.getElementById('dailyNoteDate').value,n=state.dailyNotes.find(x=>x.date===d);document.getElementById('dailyNoteText').value=n?.text||''}
-async function saveDailyNote(){const d=document.getElementById('dailyNoteDate').value||today(),text=document.getElementById('dailyNoteText').value;let n=state.dailyNotes.find(x=>x.date===d);if(n)n.text=text;else state.dailyNotes.push({id:uid(),date:d,text});await save()}
+async function saveDailyNote(){const d=document.getElementById('dailyNoteDate').value||today(),text=document.getElementById('dailyNoteText').value;let n=state.dailyNotes.find(x=>x.date===d);if(n){n.text=text;n.updatedAt=new Date().toISOString()}else state.dailyNotes.push({id:uid(),date:d,text,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});await save()}
 function unresolvedSyncConflict(){return [...(state.syncConflicts||[])].reverse().find(x=>x&&x.status==='unresolved')||null}
 function renderSyncConflict(){const panel=document.getElementById('syncConflictPanel'),text=document.getElementById('syncConflictText');if(!panel)return;const c=unresolvedSyncConflict();if(!c){panel.style.display='none';if(text)text.textContent='';return}panel.style.display='block';if(text)text.textContent=`이 기기가 알고 있던 클라우드 버전 r${Number(c.localRevision||0)} 이후 다른 기기에서 r${Number(c.remoteRevision||0)}으로 바뀌었고, 이 기기에도 저장하지 않은 변경이 있습니다. 사용할 버전을 선택해주세요.`}
-function renderSyncStatus(){ensureSyncState();const sync=state.settings.sync||{},pending=(state.syncQueue||[]).filter(x=>x.status==='pending').length,pill=document.getElementById('syncPill'),summary=document.getElementById('syncSummary');if(pill)pill.textContent=sync.status==='local_only'?'로컬 전용':sync.status==='ready'?'연결 준비됨':sync.status==='authenticated'?'로그인 확인됨':sync.status==='connected'?'동기화 연결됨':'동기화 확인';if(summary)summary.textContent=sync.status==='local_only'?'현재 기록은 이 기기에만 저장됩니다. 클라우드 연결 전에도 계속 사용할 수 있습니다.':sync.status==='ready'?'클라우드 연결 전 안전장치가 준비되었습니다. Supabase 연결 정보를 저장하고 로그인을 확인할 수 있습니다.':sync.status==='authenticated'?'Supabase 로그인이 확인되었습니다. 아직 데이터 동기화는 시작하지 않았습니다.':'로컬 기록을 우선 저장하고 연결될 때 클라우드와 비교합니다.';const d=document.getElementById('deviceIdView'),l=document.getElementById('localSavedView'),q=document.getElementById('syncPendingView'),x=document.getElementById('lastSyncView');if(d)d.textContent=(state.settings.deviceId||'').slice(0,12);if(l)l.textContent=state.settings.lastLocalSavedAt?new Date(state.settings.lastLocalSavedAt).toLocaleString():'-';if(q)q.textContent=pending+'건';if(x)x.textContent=sync.lastSyncAt?new Date(sync.lastSyncAt).toLocaleString():'아직 없음';renderSyncConflict()}
+function renderSyncStatus(){ensureSyncState();const sync=state.settings.sync||{},pending=(state.syncQueue||[]).filter(x=>x.status==='pending').length,pill=document.getElementById('syncPill'),summary=document.getElementById('syncSummary');if(pill)pill.textContent=sync.status==='local_only'?'로컬 전용':sync.status==='ready'?'연결 준비됨':sync.status==='authenticated'?'로그인 확인됨':sync.status==='connected'?'자동 동기화':'동기화 확인';if(summary)summary.textContent=sync.status==='local_only'?'현재 기록은 이 기기에만 저장됩니다. 클라우드 연결 전에도 계속 사용할 수 있습니다.':sync.status==='ready'?'클라우드 연결 전 안전장치가 준비되었습니다. Supabase 연결 정보를 저장하고 로그인을 확인할 수 있습니다.':sync.status==='authenticated'?'Supabase 로그인이 확인되었습니다. 지금 동기화를 한 번 누르면 이후 자동 동기화가 시작됩니다.':'변경 내용은 잠시 뒤 자동으로 클라우드에 합쳐지고, 앱으로 돌아올 때 다른 기기의 최신 기록을 확인합니다.';const d=document.getElementById('deviceIdView'),l=document.getElementById('localSavedView'),q=document.getElementById('syncPendingView'),x=document.getElementById('lastSyncView');if(d)d.textContent=(state.settings.deviceId||'').slice(0,12);if(l)l.textContent=state.settings.lastLocalSavedAt?new Date(state.settings.lastLocalSavedAt).toLocaleString():'-';if(q)q.textContent=pending+'건';if(x)x.textContent=sync.lastSyncAt?new Date(sync.lastSyncAt).toLocaleString():'아직 없음';renderSyncConflict()}
 async function prepareCloudSync(){ensureSyncState();if(state.settings.sync.status!=='local_only')return alert('이미 클라우드 연결 준비가 되어 있습니다.');const backupId=await makeBackup('before_cloud_setup');state.settings.sync={...state.settings.sync,status:'ready',provider:null,preparedAt:new Date().toISOString(),backupId};queueLocalSnapshot('cloud_setup_ready');await dbSet('state',structuredClone(state));renderSyncStatus();const n=document.getElementById('syncNotice');if(n)n.textContent='준비 완료: 연결 직전 로컬 백업을 만들었습니다. 아직 어떤 외부 서비스에도 데이터가 전송되지 않았습니다.'}
-function buildSyncEnvelope(){ensureSyncState();reconcileInboxJournal();return {format:'solid-time-sync',schemaVersion:SCHEMA,deviceId:state.settings.deviceId,generatedAt:new Date().toISOString(),baseRemoteRevision:state.settings.sync.lastRemoteRevision||null,data:structuredClone(state)}}
+function syncDataForCloud(src=state){
+  const data=structuredClone(src);
+  data.settings={schemaVersion:SCHEMA,nextAction:data.settings?.nextAction||'',timezone:data.settings?.timezone||'Asia/Seoul'};
+  delete data.syncQueue;delete data.syncConflicts;delete data.backups;
+  return data
+}
+function buildSyncEnvelope(src=state){ensureSyncState();reconcileInboxJournal();return {format:'solid-time-sync',schemaVersion:SCHEMA,deviceId:state.settings.deviceId,generatedAt:new Date().toISOString(),baseRemoteRevision:state.settings.sync.lastRemoteRevision||null,data:syncDataForCloud(src)}}
+function syncStamp(x){
+  if(!x||typeof x!=='object')return 0;
+  for(const k of ['updatedAt','modifiedAt','routedAt','completedAt','deletedAt','archivedAt','createdAt']){
+    const v=x[k];if(!v)continue;const t=Date.parse(String(v).length===10?String(v)+'T12:00:00':v);if(Number.isFinite(t))return t
+  }
+  const d=x.localDate||x.date||x.planDate;if(d){const t=Date.parse(String(d)+'T12:00:00');if(Number.isFinite(t))return t}
+  return 0
+}
+function mergeByKey(localArr,remoteArr,keyFn,preferRemote=false){
+  const lm=new Map(),rm=new Map(),keys=[];
+  for(const x of (Array.isArray(localArr)?localArr:[])){const k=keyFn(x);if(k==null)continue;if(!lm.has(k))keys.push(k);lm.set(k,x)}
+  for(const x of (Array.isArray(remoteArr)?remoteArr:[])){const k=keyFn(x);if(k==null)continue;if(!lm.has(k)&&!rm.has(k))keys.push(k);rm.set(k,x)}
+  return keys.map(k=>{const l=lm.get(k),r=rm.get(k);if(!l)return structuredClone(r);if(!r)return structuredClone(l);const ls=syncStamp(l),rs=syncStamp(r);if(rs>ls)return structuredClone(r);if(ls>rs)return structuredClone(l);return structuredClone(preferRemote?r:l)})
+}
+function bucketMap(data,buckets,defaultStatuses){
+  const m=new Map();
+  buckets.forEach((bucket,i)=>{for(const raw of (Array.isArray(data?.[bucket])?data[bucket]:[])){if(!raw?.id)continue;const x=structuredClone(raw);if(!x.status)x.status=defaultStatuses[i];m.set(x.id,x)}});
+  return m
+}
+function mergeBucketGroup(local,remote,buckets,statuses,preferRemote=false){
+  const lm=bucketMap(local,buckets,statuses),rm=bucketMap(remote,buckets,statuses),ids=new Set([...lm.keys(),...rm.keys()]),picked=[];
+  for(const id of ids){const l=lm.get(id),r=rm.get(id);if(!l)picked.push(structuredClone(r));else if(!r)picked.push(structuredClone(l));else{const ls=syncStamp(l),rs=syncStamp(r);picked.push(structuredClone(rs>ls?r:ls>rs?l:(preferRemote?r:l)))}}
+  const out={};for(const b of buckets)out[b]=[];
+  for(const x of picked){let idx=statuses.indexOf(x.status);if(idx<0)idx=0;out[buckets[idx]].push(x)}
+  return out
+}
+function mergeCloudState(local,remote,preferRemote=false){
+  const out=structuredClone(local);
+  const pg=mergeBucketGroup(local,remote,['projects','projectArchive','projectTrash'],['active','archived','deleted'],preferRemote);Object.assign(out,pg);
+  const ag=mergeBucketGroup(local,remote,['activities','activityArchive'],['active','archived'],preferRemote);Object.assign(out,ag);
+  const specs={
+    projectTasks:x=>x?.id,
+    projectWorkItems:x=>x?.id,
+    activityDays:x=>x?.id||((x?.activityId&&x?.date)?x.activityId+'|'+x.date:null),
+    activityNotes:x=>x?.id||((x?.activityId&&x?.date)?x.activityId+'|'+x.date:null),
+    activityTodos:x=>x?.id,
+    lifeTasks:x=>x?.id,
+    legacyLifeFlags:x=>x?.id||JSON.stringify(x),
+    timeLogs:x=>x?.id||x?.timerSessionId,
+    allocations:x=>x?.id||((x?.date&&x?.projectId)?x.date+'|'+x.projectId:null),
+    rollovers:x=>x?.id,
+    dailyNotes:x=>x?.date||x?.id,
+    ideas:x=>x?.id,
+    ideaNodes:x=>x?.id,
+    voyages:x=>x?.id,
+    dayRhythms:x=>x?.date||x?.id,
+    focusChecks:x=>x?.id,
+    importBatches:x=>x?.id||x?.sourceHash
+  };
+  for(const [k,keyFn] of Object.entries(specs))out[k]=mergeByKey(local?.[k],remote?.[k],keyFn,preferRemote);
+  out.inbox=mergeInboxCollections(remote?.inbox,local?.inbox,readInboxJournal());
+  out.settings=structuredClone(local.settings||{});
+  if(preferRemote&&remote?.settings?.nextAction!==undefined)out.settings.nextAction=remote.settings.nextAction;
+  out.settings.schemaVersion=SCHEMA;
+  out.legacyExtras=preferRemote?{...(local.legacyExtras||{}),...(remote?.legacyExtras||{})}:{...(remote?.legacyExtras||{}),...(local.legacyExtras||{})};
+  out.backups=structuredClone(local.backups||[]);
+  out.syncQueue=structuredClone(local.syncQueue||[]);
+  out.syncConflicts=structuredClone(local.syncConflicts||[]);
+  ensureMergedShape(out);
+  return out
+}
+function ensureMergedShape(obj){
+  const arrays=['projects','projectArchive','projectTrash','projectTasks','projectWorkItems','activities','activityArchive','activityDays','activityNotes','activityTodos','inbox','lifeTasks','legacyLifeFlags','timeLogs','allocations','rollovers','dailyNotes','ideas','ideaNodes','voyages','dayRhythms','focusChecks','importBatches','backups','syncQueue','syncConflicts'];
+  for(const k of arrays)if(!Array.isArray(obj[k]))obj[k]=[];
+  return obj
+}
+function replaceState(next){for(const k of Object.keys(state))delete state[k];Object.assign(state,structuredClone(next));ensureCurrentStateShape();ensureSyncState()}
+
 function cleanProjectUrl(v){return String(v||'').trim().replace(/\/+$/,'')}
 function toggleCloudSetup(){const p=document.getElementById('cloudSetupPanel');if(!p)return;p.style.display=p.style.display==='none'?'block':'none'}
 async function loadCloudSetup(){const c=await dbGet(CLOUD_CONFIG_KEY);if(c&&typeof c==='object')cloudConfig={...cloudConfig,...c};const u=document.getElementById('cloudUrl'),k=document.getElementById('cloudKey'),e=document.getElementById('cloudEmail');if(u)u.value=cloudConfig.projectUrl||'';if(k)k.value=cloudConfig.publishableKey||'';if(e)e.value=cloudConfig.email||'';renderCloudAuthStatus()}
@@ -497,53 +583,59 @@ async function getCloudClient(){
   return client;
 }
 function clearPendingSyncQueue(){for(const x of state.syncQueue||[]){if(x.status==='pending')x.status='synced'}state.syncQueue=(state.syncQueue||[]).slice(-30)}
-async function syncNow(){
-  const notice=document.getElementById('syncNotice');
+function scheduleAutoSync(delay=1800){
+  if(syncBusy||state.settings?.sync?.status!=='connected'||!cloudConfig.accessToken||!cloudConfig.refreshToken)return;
+  if(autoSyncTimer)clearTimeout(autoSyncTimer);
+  autoSyncTimer=setTimeout(()=>{autoSyncTimer=null;void syncNow({silent:true,source:'auto'})},delay)
+}
+function addSyncBackup(reason){
+  const b={id:uid(),schemaVersion:SCHEMA,createdAt:new Date().toISOString(),reason,snapshot:structuredClone(state),counts:recordCounts(state),totalTimeMinutes:sumMinutes(state.timeLogs)};
+  state.backups=state.backups||[];state.backups.unshift(b);state.backups=state.backups.slice(0,12);return b.id
+}
+async function syncNow(opts={}){
+  const silent=!!opts.silent, notice=document.getElementById('syncNotice');
+  if(syncBusy)return;
+  syncBusy=true;
   try{
     ensureSyncState();
-    if(notice)notice.textContent='동기화 확인 중...';
+    if(notice)notice.textContent=silent?'자동 동기화 중...':'동기화 확인 중...';
     const client=await getCloudClient();
     const {data:remote,error:readError}=await client.from('solidtime_sync').select('user_id,revision,payload,device_id,updated_at').eq('user_id',cloudConfig.userId).maybeSingle();
     if(readError)throw new Error('클라우드 읽기 실패: '+(readError.message||readError));
-    const pending=(state.syncQueue||[]).some(x=>x.status==='pending');
-    const lastRev=Number(state.settings.sync.lastRemoteRevision||0);
+    const pending=(state.syncQueue||[]).some(x=>x.status==='pending'),lastRev=Number(state.settings.sync.lastRemoteRevision||0);
     if(!remote){
-      const backupId=await makeBackup('before_first_cloud_upload');
-      const envelope=buildSyncEnvelope();
+      const backupId=addSyncBackup('before_first_cloud_upload'),envelope=buildSyncEnvelope();
       const row={user_id:cloudConfig.userId,revision:1,payload:envelope,device_id:state.settings.deviceId,updated_at:new Date().toISOString()};
       const {error}=await client.from('solidtime_sync').insert(row);
       if(error)throw new Error('최초 업로드 실패: '+(error.message||error));
-      clearPendingSyncQueue(); state.settings.sync={...state.settings.sync,status:'connected',lastSyncAt:new Date().toISOString(),lastRemoteRevision:1,lastBackupId:backupId};
-      await dbSet('state',structuredClone(state)); renderSyncStatus(); if(notice)notice.textContent='최초 동기화 완료 · 이 기기의 기록을 클라우드에 안전하게 저장했습니다.'; alert('첫 동기화에 성공했습니다.'); return;
+      clearPendingSyncQueue();state.settings.sync={...state.settings.sync,provider:'supabase',status:'connected',lastSyncAt:new Date().toISOString(),lastRemoteRevision:1,lastBackupId:backupId};
+      await dbSet('state',structuredClone(state));render();renderSyncStatus();if(notice)notice.textContent='동기화 완료 · 이 기기의 기록을 클라우드에 저장했습니다.';if(!silent)alert('동기화에 성공했습니다.');return
     }
-    const remoteRev=Number(remote.revision||0);
-    if(remoteRev>lastRev && pending){
-      const backupId=await makeBackup('sync_conflict_local');
-      state.syncConflicts.push({id:uid(),createdAt:new Date().toISOString(),type:'remote_changed_with_local_pending',localRevision:lastRev,remoteRevision:remoteRev,backupId,status:'unresolved'});
-      await dbSet('state',structuredClone(state)); renderSyncStatus(); if(notice)notice.textContent='동기화 중지 · 다른 기기의 변경과 이 기기의 변경이 모두 있어 자동 덮어쓰기를 막았습니다.'; alert('동기화 충돌을 감지했습니다. 어느 쪽 데이터도 덮어쓰지 않았습니다.'); return;
-    }
-    if(remoteRev>lastRev && !pending){
-      const payload=remote.payload; if(!payload?.data)throw new Error('클라우드 데이터 형식을 확인할 수 없습니다.');
-      await makeBackup('before_cloud_download');
-      const incoming=payload.data;
-      const localDeviceId=state.settings.deviceId, localConflicts=structuredClone(state.syncConflicts||[]), localInbox=structuredClone(state.inbox||[]);
-      for(const k of Object.keys(state)){if(incoming[k]!==undefined)state[k]=structuredClone(incoming[k])}
-      ensureCurrentStateShape();
-      state.inbox=mergeInboxCollections(state.inbox,localInbox,readInboxJournal());
-      ensureSyncState(); state.settings.deviceId=localDeviceId||state.settings.deviceId||uid(); state.syncConflicts=localConflicts; clearPendingSyncQueue(); state.settings.sync={...state.settings.sync,provider:'supabase',status:'connected',lastSyncAt:new Date().toISOString(),lastRemoteRevision:remoteRev};
-      await dbSet('state',structuredClone(state)); render(); renderSyncStatus(); if(notice)notice.textContent='동기화 완료 · 다른 기기의 최신 기록을 이 기기에 반영했습니다.'; alert('클라우드의 최신 기록을 가져왔습니다.'); return;
-    }
-    if(pending){
-      const backupId=await makeBackup('before_cloud_upload');
-      const newRev=remoteRev+1, envelope=buildSyncEnvelope(); envelope.baseRemoteRevision=remoteRev;
+    const remoteRev=Number(remote.revision||0),incoming=remote.payload?.data;
+    if(!incoming||typeof incoming!=='object')throw new Error('클라우드 데이터 형식을 확인할 수 없습니다.');
+    const remoteChanged=remoteRev>lastRev, localAhead=remoteRev<lastRev;
+    const preferRemote=remoteChanged&&!pending;
+    let backupId=null;
+    if(remoteChanged)backupId=addSyncBackup('before_cloud_merge');
+    const merged=mergeCloudState(state,incoming,preferRemote);
+    replaceState(merged);
+    ensureSyncState();
+    const needUpload=pending||localAhead;
+    if(needUpload){
+      const newRev=remoteRev+1,envelope=buildSyncEnvelope();envelope.baseRemoteRevision=remoteRev;
       const {data:updated,error}=await client.from('solidtime_sync').update({revision:newRev,payload:envelope,device_id:state.settings.deviceId,updated_at:new Date().toISOString()}).eq('user_id',cloudConfig.userId).eq('revision',remoteRev).select('revision').maybeSingle();
       if(error)throw new Error('업로드 실패: '+(error.message||error));
-      if(!updated){if(notice)notice.textContent='동기화 중지 · 업로드 직전에 다른 기기에서 변경되었습니다.';alert('다른 기기의 변경을 감지해 덮어쓰기를 중지했습니다. 다시 동기화해주세요.');return}
-      clearPendingSyncQueue(); state.settings.sync={...state.settings.sync,status:'connected',lastSyncAt:new Date().toISOString(),lastRemoteRevision:newRev,lastBackupId:backupId};
-      await dbSet('state',structuredClone(state)); renderSyncStatus(); if(notice)notice.textContent='동기화 완료 · 이 기기의 최신 기록을 클라우드에 저장했습니다.'; alert('동기화에 성공했습니다.'); return;
+      if(!updated)throw new Error('다른 기기가 동시에 저장했습니다. 잠시 후 다시 동기화해주세요.');
+      clearPendingSyncQueue();state.settings.sync={...state.settings.sync,provider:'supabase',status:'connected',lastSyncAt:new Date().toISOString(),lastRemoteRevision:newRev,lastBackupId:backupId||state.settings.sync.lastBackupId};
+      await dbSet('state',structuredClone(state));render();renderSyncStatus();if(notice)notice.textContent=remoteChanged?'동기화 완료 · 두 기기의 기록을 합쳐 저장했습니다.':'동기화 완료 · 이 기기의 변경을 클라우드에 저장했습니다.';if(!silent)alert('동기화에 성공했습니다.');return
     }
-    state.settings.sync={...state.settings.sync,status:'connected',lastSyncAt:new Date().toISOString(),lastRemoteRevision:remoteRev}; await dbSet('state',structuredClone(state)); renderSyncStatus(); if(notice)notice.textContent='동기화 완료 · 이미 최신 상태입니다.'; alert('이미 최신 상태입니다.');
-  }catch(e){console.error(e);const msg='동기화 실패: '+(e?.message||e);if(notice)notice.textContent=msg;alert(msg)}
+    clearPendingSyncQueue();state.settings.sync={...state.settings.sync,provider:'supabase',status:'connected',lastSyncAt:new Date().toISOString(),lastRemoteRevision:remoteRev,lastBackupId:backupId||state.settings.sync.lastBackupId};
+    await dbSet('state',structuredClone(state));render();renderSyncStatus();
+    if(notice)notice.textContent=remoteChanged?'동기화 완료 · 다른 기기의 최신 기록을 가져왔습니다.':'동기화 완료 · 이미 최신 상태입니다.';
+    if(!silent)alert(remoteChanged?'다른 기기의 최신 기록을 가져왔습니다.':'이미 최신 상태입니다.')
+  }catch(e){
+    console.error(e);const msg='동기화 실패: '+(e?.message||e);if(notice)notice.textContent=msg;if(!silent)alert(msg)
+  }finally{syncBusy=false}
 }
 
 async function resolveSyncConflict(choice){
@@ -626,6 +718,8 @@ function switchTab(tabId){document.querySelectorAll('.tabpage').forEach(x=>x.cla
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
 window.addEventListener('error',e=>{document.getElementById('saveStatus').textContent='오류: '+e.message});
 window.addEventListener('beforeunload',()=>{persistTimerState()});
+window.addEventListener('focus',()=>{scheduleAutoSync(350)});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleAutoSync(350)});
 window.addEventListener('DOMContentLoaded',()=>{document.getElementById('inboxInput')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();void addInbox()}});init()});
 </script>
 </body></html>
